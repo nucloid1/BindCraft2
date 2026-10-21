@@ -4,7 +4,7 @@
 
 [Install](#install) · [Check it](#check-the-installation) · [Weights and caches](#model-weights-and-caches) · [Run a campaign](#run-a-campaign) · [GPU and memory](#gpu-and-memory-controls) · [Clusters](#slurm-and-other-schedulers) · [Containers](#containers) · [No internet](#machines-with-no-route-to-the-internet) · [Troubleshooting](#troubleshooting)
 
-BC2 needs Linux, Python 3.12 or newer and an NVIDIA GPU. One command installs it on a workstation, a login node or inside a container, and chooses the accelerator wheels for the card it finds. **There is no CPU installation**: a single trajectory folds an AlphaFold ensemble hundreds of times, which is days of processor for an hour of card, so `bash install.sh cpu` is refused rather than quietly built.
+BC2 needs Linux, Python 3.12 or newer and an NVIDIA GPU (or, experimentally, an Apple silicon Mac: see [Apple silicon](#apple-silicon-experimental)). One command installs it on a workstation, a login node or inside a container, and chooses the accelerator wheels for the card it finds. **There is no CPU installation**: a single trajectory folds an AlphaFold ensemble hundreds of times, which is days of processor for an hour of card, so `bash install.sh cpu` is refused rather than quietly built.
 
 ## Install
 
@@ -57,6 +57,28 @@ Activate that same environment in later sessions. An active environment older th
 ### When the machine has no usable Python
 
 The installer builds `.venv` with the first of these that works, and reports which one it used: `uv`, the stock `venv` module, then `micromamba`, `mamba` or `conda`, and finally a copy of `uv` downloaded from GitHub with its checksum verified. Each is asked for the newest interpreter it can reach at 3.12 or above, so a machine with 3.14 installs on 3.14. This matters on login nodes, where `venv` often ships without `ensurepip` and can build nothing; `uv` brings its own interpreter and needs no administrator.
+
+## Apple silicon (experimental)
+
+An Apple silicon Mac runs BC2 on its GPU through the [metaljax](https://github.com/eterevsky/metaljax) plugin for JAX. This is experimental, it is not CUDA-equivalent, and it has been exercised on one machine (an M3 Max with 48 GB) for single trajectories rather than for whole campaigns.
+
+```bash
+bash install.sh          # on arm64 macOS this installs the metal extra; "bash install.sh metal" names it
+source .venv/bin/activate
+bindcraft design examples/pdl1.json
+```
+
+Python 3.12 or newer is needed, as elsewhere. On a Mac the installer does not look for an NVIDIA driver, and an Intel Mac is refused.
+
+- **The platform is chosen when `bindcraft` is imported.** With the plugin installed on arm64 macOS and no `JAX_PLATFORMS` set, BC2 sets `JAX_PLATFORMS=metal`. It is `metal` alone, with no CPU behind it, so a Metal runtime that cannot start fails loudly instead of quietly folding on the processor. Set `JAX_PLATFORMS=cpu` yourself to force the CPU, which is only useful for checking a result.
+- **One worker.** There is no `nvidia-smi`, so a campaign plans no GPU fan-out and designs in a single process. `auto_multi_gpu`, `workers_per_gpu`, `max_workers_per_gpu` and `gpu_ids` have nothing to act on.
+- **No cuDNN or cuEquivariance.** `attention_backend: auto` finds that the cuDNN probe fails and uses the stock attention, and `use_cueq` is ignored because `cuequivariance_jax` is not importable. Both are the same fall-backs a machine without those wheels would take.
+- **Precision is unchanged.** The AlphaFold models run in bfloat16 as they do on CUDA. In float32 the Metal and CPU backends agree closely; in bfloat16 individual trajectories are noisy and are not reproducible between backends (they are not between bfloat16 and float32 on one backend either).
+- **Memory.** metaljax refuses to start work when the machine as a whole already has too much memory claimed, which is `RESOURCE_EXHAUSTED: metaljax out of memory`, and this counts other processes' GPU memory. Wait for the other job or free memory. The plugin's `METALJAX_MEM_SYS_MB` and `METALJAX_MEM_BUDGET_MB` raise the ceiling at the risk of paging the machine; BC2 does not set them.
+- **Weights.** Point `BINDCRAFT_AF2_PARAMS` at AlphaFold parameters you already have to skip the 5.3 GB download; ProteinMPNN weights ship with the package.
+- **No compile cache.** The persistent compiled-graph cache stays empty with the plugin, so nothing is reused between runs and each process compiles again (about 10 s for the first prediction of a 196-residue complex).
+
+What was checked on an M3 Max, against the same code on the CPU: a forward pass of a 196-residue complex in float32 matches to 0.002 A CA RMSD with identical pLDDT, pTM and PAE; the gradient of the design loss in float32 has cosine 0.9997 on identical inputs (0.99 one step later); the linear algebra BC2 differentiates through (SVD, determinant, `eigh`, QR, inverse) matches to about 1e-6. A forward pass takes about 5 s against about 21 s on the CPU, and a six-step trajectory about 32 s against about 110 s. A bounded run through trajectory, ProteinMPNN redesign and validation completed and wrote finite records. Not checked: acceptance rates against CUDA, long campaigns, or larger complexes.
 
 ## Check the installation
 

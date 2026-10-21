@@ -21,6 +21,8 @@ bash install.sh
 source .venv/bin/activate
 ```
 
+On an Apple silicon Mac the same commands install the experimental Metal backend; see [Apple silicon](docs/installation.md#apple-silicon-experimental).
+
 In a new terminal, return to `BC2` and run `source .venv/bin/activate` again. See the [installation and running guide](docs/installation.md) for existing environments, older GPUs, clusters, containers and troubleshooting.
 
 ## Run your first design

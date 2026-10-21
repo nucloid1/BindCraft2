@@ -3,6 +3,8 @@ import functools
 import importlib.util
 import os
 import pkgutil
+import platform
+import sys
 
 def append_xla_flags(flags: str) -> None:
     os.environ['XLA_FLAGS'] = f"{os.environ.get('XLA_FLAGS', '')} {flags}".strip()
@@ -16,6 +18,20 @@ if 'triton_gemm' not in os.environ.get('XLA_FLAGS', ''):
     append_xla_flags('--xla_gpu_enable_triton_gemm=false')
 if os.environ.get('BC2_XLA_EXTRA', '').strip():
     append_xla_flags(os.environ['BC2_XLA_EXTRA'].strip())
+
+def select_apple_gpu() -> None:
+    #On Apple silicon with the metaljax plugin installed (the "metal" extra), run JAX on the Apple GPU. The
+    #platform is metal alone, with no cpu behind it, so a Metal runtime that cannot start fails loudly rather
+    #than quietly folding on the processor. An explicit JAX_PLATFORMS (JAX_PLATFORMS=cpu included) wins.
+    if 'JAX_PLATFORMS' in os.environ or 'JAX_PLATFORM_NAME' in os.environ:
+        return
+    try:
+        if sys.platform == 'darwin' and platform.machine() == 'arm64' and importlib.util.find_spec('jax_plugins.metal') is not None:
+            os.environ['JAX_PLATFORMS'] = 'metal'
+    except (ImportError, ValueError):
+        pass
+
+select_apple_gpu()
 
 COMMAND_ENTRY = 'main'
 DEFINITION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)

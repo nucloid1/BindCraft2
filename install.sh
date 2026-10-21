@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Install BC2 and everything it designs with: bash install.sh, then bindcraft design settings.json.
-# The accelerator is read off the driver; pass cuda13, cuda12, rocm or oneapi to name it instead,
-# and --no-weights to skip the one-time AlphaFold parameter download.
+# The accelerator is read off the driver; pass cuda13, cuda12, rocm, oneapi or metal to name it instead,
+# and --no-weights to skip the one-time AlphaFold parameter download. On Apple silicon the accelerator is
+# metal (experimental, through the metaljax plugin) and needs no argument.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -13,11 +14,22 @@ fetch_weights=1
 for argument in "$@"; do
   case "$argument" in
     --no-weights) fetch_weights=0 ;;
-    cuda13|cuda12|rocm|oneapi) accelerator="$argument" ;;
+    cuda13|cuda12|rocm|oneapi|metal) accelerator="$argument" ;;
     cpu) echo "bindcraft: there is no CPU installation. A trajectory folds an AlphaFold ensemble hundreds of times, which is days of processor for an hour of card, so install where there is a GPU." >&2; exit 2 ;;
-    *) echo "usage: bash install.sh [cuda13|cuda12|rocm|oneapi] [--no-weights]" >&2; exit 2 ;;
+    *) echo "usage: bash install.sh [cuda13|cuda12|rocm|oneapi|metal] [--no-weights]" >&2; exit 2 ;;
   esac
 done
+
+if [[ -z $accelerator && $(uname -s) == Darwin ]]; then
+  # A Mac has no NVIDIA driver to read, and assuming CUDA 13 for it would install wheels that cannot run.
+  # Apple silicon has a GPU jax can use through the metaljax plugin; an Intel Mac has none worth installing for.
+  if [[ $(uname -m) == arm64 ]]; then
+    accelerator=metal
+  else
+    echo "bindcraft: there is no GPU backend for an Intel Mac, and no CPU installation, so BC2 cannot be installed here" >&2
+    exit 2
+  fi
+fi
 
 if [[ -z $accelerator ]]; then
   # nvidia-smi reports the newest CUDA its driver serves, which is what the jax wheels are built for.
@@ -130,10 +142,16 @@ if ! "$python" -m bindcraft.selfcheck "$accelerator"; then
 fi
 # Whether it also runs here is a different question: a login node with tight process limits cannot
 # start a JAX runtime while its compute nodes are fine, so this reports rather than refuses.
-if backend=$("$python" -c 'import jax; print(jax.default_backend(), len(jax.devices()))' 2>/dev/null); then
+# On Apple silicon the platform is chosen when bindcraft is imported, so the check goes through it.
+probe='import jax; print(jax.default_backend(), len(jax.devices()))'
+if [[ $accelerator == metal ]]; then probe='import bindcraft, jax; print(jax.default_backend(), len(jax.devices()))'; fi
+if backend=$("$python" -c "$probe" 2>/dev/null); then
   echo "bindcraft: jax runs here on ${backend% *}, ${backend#* } device(s)"
   if [[ $accelerator == cuda* && ${backend% *} == cpu && -n $(nvidia-smi -L 2>/dev/null) ]]; then
     echo "bindcraft: this machine has a GPU and jax did not take it, so a campaign here would run on the CPU" >&2
+  fi
+  if [[ $accelerator == metal && ${backend% *} != metal ]]; then
+    echo "bindcraft: jax did not take the Apple GPU, so a campaign here would run on the CPU" >&2
   fi
 else
   echo "bindcraft: jax did not start here, which is normal on a login node; check inside your allocation with"
