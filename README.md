@@ -4,6 +4,10 @@
 
 **Design protein binders around the biology of your experiment.**
 
+> **Apple silicon (Metal) fork.** Unofficial fork of [PacesaLab/BindCraft2](https://github.com/PacesaLab/BindCraft2), modified from upstream to run on Apple GPUs. On an arm64 Mac, `bash install.sh` installs the [metaljax](https://github.com/eterevsky/metaljax) JAX plugin and `bindcraft` runs AlphaFold 2 on the Metal GPU; CUDA, ROCm and oneAPI paths are unchanged.
+> On an M3 Max (48 GB), against the same code on the CPU: a 196-residue forward pass takes ~5 s vs ~21 s, and a six-step design trajectory ~32 s vs ~110 s (~3.5x), with float32 results matching the CPU (0.002 Å CA RMSD, identical pLDDT, pTM and PAE).
+> Experimental: checked on one machine and on single trajectories only, with no comparison against CUDA. See [Apple silicon](docs/installation.md#apple-silicon-experimental).
+
 BC2 brings de novo miniproteins, scaffolded binders, cyclic peptides and multistate design into one workflow. Describe your target, choose the kind of binder you want, and add properties that matter for your experiment. Named presets supply the design settings and acceptance filters; you can adjust individual settings when needed.
 
 BC2 combines sequence optimisation through AlphaFold 2 with ProteinMPNN redesign, then evaluates candidates with separate AlphaFold models and structural filters. It returns sequences, predicted complexes and ranked results, with measurements of the interface, fold and molecular properties to help choose candidates for testing. These are computational designs: binding, selectivity and the requested biological behaviour require experimental validation.
@@ -21,7 +25,7 @@ bash install.sh
 source .venv/bin/activate
 ```
 
-On an Apple silicon Mac the same commands install the experimental Metal backend; see [Apple silicon](docs/installation.md#apple-silicon-experimental).
+On an Apple silicon Mac, clone this fork instead (`git clone https://github.com/nucloid1/BindCraft2.git`); the same commands then install the experimental Metal backend. See [Apple silicon](docs/installation.md#apple-silicon-experimental).
 
 In a new terminal, return to `BC2` and run `source .venv/bin/activate` again. See the [installation and running guide](docs/installation.md) for existing environments, older GPUs, clusters, containers and troubleshooting.
 
