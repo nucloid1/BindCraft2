@@ -19,8 +19,8 @@ torch on MPS; none was measured against a JAX Metal path, so the gain here is a 
   testing.
 - **No stop rule.** Speed is measured and reported at every checkpoint but never stops the work (Ethan wants JAX and the plugin off the Mac path
   regardless).
-- **Neural Engine, "if possible".** See "Neural Engine" below: it is not part of this port, and an optional later phase is written down with a
-  feasibility gate.
+- **Neural Engine, "if possible" (asked twice).** Not part of phase 1, which is GPU-only. Section "Neural Engine" records what exists, what is
+  unknown, and two throwaway spikes that would settle it; they start only on Ethan's separate yes.
 
 Standing rules from earlier work: nothing in a repo this work does not own is modified; one GPU run at a time (the shared lock
 `~/.cache/esmfold2_mlx/gpu.lock`); disk under 90% unless Ethan opts in (`..._MIN_FREE_GB`); never a silent fallback to another backend.
@@ -63,7 +63,7 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
 
 ## Non-goals
 
-- The Neural Engine (see below). The loss, ProteinMPNN, the optimizer and the filters in MLX (a possible later phase). Training, new modalities,
+- The Neural Engine in phase 1 (see below). The loss, ProteinMPNN, the optimizer and the filters in MLX (a possible later phase). Training, new modalities,
   changing any loss or setting. Multi-GPU. Running on Intel Macs. Replacing or removing the JAX paths.
 
 ## Anti-goals (a failure even if it technically works)
@@ -82,7 +82,9 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
   child process that never imports JAX; arrays cross by shared memory. This is the pattern of the earlier ports (an MLX process that has done
   other CPU-side framework work ran about a third slower in Mol-1's measurements, cured by a process boundary). The parent keeps JAX, forced onto the
   CPU platform on this backend, for the front (sequence to features), the loss and the optimizer; the GPU then belongs to MLX alone, and the metaljax
-  plugin is not needed on this path. The cross-boundary arrays are small (logits and positions of the order of 10 MB per step at 300 residues).
+  plugin is not needed on this path. **My call, and the one to check first:** ProteinMPNN, the filters and the rest of `bindcraft/` are JAX too
+  (`proteinmpnn.py`, `MPNN_stage.py`, `filters.py`), so they move to the CPU with the parent, at a cost nobody has measured. It is measured at the
+  first checkpoint. A setting can leave the parent on metaljax instead (the plugin then stays a dependency and the two processes share the GPU). The cross-boundary arrays are small (logits and positions of the order of 10 MB per step at 300 residues).
 - **The call contract.** `forward(model, features, dropout/rng) -> outputs` and `vjp(model, features, cotangents) -> d(features)`. JAX computes the
   loss from the outputs and its gradient with respect to the outputs (the cotangents); MLX returns the gradient with respect to the float input
   features (`msa_feat`, `target_feat`, ...), which JAX chains into the sequence logits through the front part with `jax.vjp`. Because the cotangents
@@ -95,23 +97,57 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
 - **Numerics.** Mirror what JAX does: bf16 parameters and compute where the haiku context applies it, fp32 where the structure module casts
   explicitly, fp32 for softmaxes and norms exactly where the JAX code has them. Rematerialisation per block with `mx.checkpoint`, row chunking with
   the same `subbatch_size` rule. Dropout uses MLX's RNG (not bit-identical to JAX's; parity is checked with dropout off).
-- **Families.** Multimer v3 first (the design default), then the monomer pTM models. A family not yet implemented is refused by name.
+- **Families (VERIFIED in `settings.py`, `campaign.py`).** Design draws only from the multimer pool and `sequence_gradients` is called only on design
+  models, so multimer v3 is the only family that needs a vjp. The monomer pTM family is forward-only (validation) but is needed for any default run:
+  with no scaffold and one copy, `resolve_validation_model` picks the monomer pool (`settings.py:590-593`). Order (my call): multimer first, with
+  `trajectory_only` or `validation_model: multimer` as the first end-to-end milestone; the monomer forward next, which makes the default run end to end.
+  A family not yet implemented is refused by name. Whether validation runs with dropout off is read from `campaign.py` by the builder (not checked here).
+- **What the predictor must reproduce (VERIFIED in code).** (1) The JAX path casts predicted atom positions to float16 before the loss
+  (`af2.py:281,343`); that cast stays in the JAX tail. (2) The campaign sets `provides_distogram`, `num_recycle`, `target_flexibility` and
+  `bigbang_initialization` on the model after construction (`campaign.py:61-75`); each must change what the MLX path does, as the JAX path keys its compile
+  cache on them. (3) `sequence_gradients(..., compile_only=True)` is called from a daemon thread to precompile the next length bucket
+  (`campaign.py:101-110`); on MLX it must be a warm-up or queue behind the worker's other requests, never a concurrent second request.
 - **Failure behaviour.** A dead worker or a cap hit raises an error that names the cause and the cap, exits non-zero and leaves no shared memory behind;
   the run is never continued on another backend.
 - **Operations.** The shared GPU lock for the whole run, the preflight (disk, heavy processes), and a worker memory cap, as in the earlier ports.
 
 ## Neural Engine
 
-- **VERIFIED (what MLX supports):** MLX targets the CPU and the GPU only.
-- **Known (platform facts, not measured here):** the Neural Engine is reached through Core ML (or undocumented private interfaces, which this work will
-  not use); it runs inference only (no gradients), computes in fp16 (no fp32), prefers fixed shapes and a restricted operation set.
-- **Consequence:** the design loop, which needs the gradient through the whole model on every step, cannot run on it. Only forward-only work could:
-  the validation refolds (3 recycles over several models per candidate).
-- **Optional later phase, gated:** a feasibility spike after the MLX backend has parity: convert one Evoformer block to Core ML (a rewrite of the
-  model into Core ML's format, not an MLX feature), run it in fp16 on the Neural Engine, and check (a) fp16 numerics against the fp32 reference
-  (AlphaFold's pair activations and attention logits are the risk), (b) that it is faster than the GPU at the shapes in use, (c) whether running
-  validation on it concurrently with GPU design work shortens a campaign. Realistic upside: concurrency and power, not raw speed. Not started
-  unless the spike is approved separately.
+Ethan asked for it "if possible", twice. What I found (this machine is an M3 Max on macOS 27.0.1):
+
+**Three ways to reach it.**
+1. **Core ML**, the long-standing public route (coremltools, compute units `CPU_AND_NE`). Inference; fp16. Known platform behaviour, not run here.
+2. **Core AI**, Apple's successor. VERIFIED present: `CoreAI.framework` is in the macOS 27 SDK and on the system. Its interface names the Neural Engine as a compute
+   unit (`ComputeUnitKind.neuralEngine`, `SpecializationOptions(preferredComputeUnitKind:)`) and has a graph compiler and an inference runtime with a
+   Metal-backed compute stream. VERIFIED: none of its 2,377 lines of exported symbols contains gradient, backward, autodiff or train. UNKNOWN: its operation
+   coverage, its precision, and whether a hand-written backward graph compiles for the Neural Engine.
+3. **Private interfaces.** VERIFIED present: `AppleNeuralEngine.framework` and `ANECompiler.framework`. REPORTED, not run by me, in the open-source project
+   `maderix/ANE` (its own README): it compiles hand-written MIL graphs in memory through `_ANEClient`/`_ANECompiler` and runs forward and activation-gradient
+   (dx) passes on the Neural Engine, with weight gradients, the optimizer and many elementwise operations on the CPU; models up to 0.6B parameters at 412 ms/step.
+   Its own stated limits: tested on M4 only (not M3), macOS 15 or later, 5 to 9% of peak utilization, a compiler leak that forces a restart after about
+   119 compiles, fp16 backward passes underflow without loss scaling, attention masks ignored on-chip, undocumented and may break on any macOS update,
+   and "does not replace GPU training beyond small research models".
+
+**Correction to what I said earlier.** "Gradients cannot run on the Neural Engine" was too strong. "Inference only" describes Core ML's policy, not the
+chip. A backward pass is another graph of matmuls and elementwise operations, and someone has run that on the chip, on an M4, through private
+interfaces, for small transformers.
+
+**Why it is still not phase 1 (INFERRED, not measured).**
+- Speed: the reported 5 to 9% utilization against GPU matmuls at 93 to 98% of the measured ceiling on this machine means the Neural Engine is unlikely to beat
+  the GPU on AlphaFold's matmuls. The case for it is concurrency, and both units share the same memory bandwidth, which AlphaFold's pair activations lean on.
+- AlphaFold specifics: 48 blocks, forward and backward, times the length buckets is a lot of compiles against a limit of about 119 per process (a disk cache
+  may help; unmeasured). Triangle attention, invariant point attention and the gathers may fall back to the CPU.
+- fp16 only for the gradient, with underflow risk; AlphaFold's pair activations and attention logits are where fp16 is most likely to hurt.
+- The private route is untested on an M3 Max and can break with an OS update.
+
+**Two ways to find out, both throwaway spikes outside this repo, each needing Ethan's separate yes (they need `coremltools` and the Core AI tools in a scratch
+environment):**
+- **Spike A, public route.** One Evoformer block, forward, fp16, Neural Engine against GPU: accuracy against the fp32 reference, and time at 150, 250 and 400 residues.
+- **Spike B, private route.** Does the `maderix/ANE` pipeline run on an M3 Max under macOS 27 at all; throughput of an AlphaFold-shaped triangle contraction and
+  projection (as 1x1 convolutions) and of one block forward plus backward; which operations fall back.
+
+**What the answer could unlock (phase 2 candidates, not started):** validation refolds on the Neural Engine (forward only) while the GPU runs the next
+design's gradient steps; or, only if Spike B is good, one slice of the design gradient on it.
 
 ## Verification
 
@@ -139,9 +175,18 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
 5. The template stack for the fixed target and the optional `initial_atom_pos` inputs must both be ported (they are used in design).
 6. The monomer family doubles part of the structure-module work.
 7. The time share of AlphaFold in a full design is not measured; if it is smaller than assumed the end-to-end gain shrinks.
+8. Moving the parent's JAX to the CPU slows ProteinMPNN and the filters by an unmeasured amount (see the parent-device call).
 
 ## Left to the builder
 
 The module layout (for example `bindcraft/af/mlx/`), the worker protocol details, the converter format, test organisation, whether and where to use
 `mx.compile`, and kernel questions (a hand-written Metal kernel only under the earlier rule: an operation class at least a quarter of the time and
 not already near the GPU's matmul ceiling).
+
+## Calls the author made (for Ethan to check)
+
+1. The parent's JAX runs on the CPU on this backend, with a setting to keep it on metaljax, decided by a measurement at the first checkpoint.
+2. Multimer first, monomer forward second; `trajectory_only` or `validation_model: multimer` is the first end-to-end milestone.
+3. The Neural Engine stays out of phase 1; two spikes would decide whether it earns a later phase, and neither starts without a separate yes.
+4. The work lives on branch `mlx-backend` in `~/BindCraft2`, off `apple-silicon-metal`, committed locally, nothing pushed.
+5. The extra forward pass per gradient step is accepted as the price of keeping the loss in JAX.
