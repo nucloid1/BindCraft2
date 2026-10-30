@@ -140,11 +140,39 @@ interfaces, for small transformers.
 - fp16 only for the gradient, with underflow risk; AlphaFold's pair activations and attention logits are where fp16 is most likely to hurt.
 - The private route is untested on an M3 Max and can break with an OS update.
 
-**Two ways to find out, both throwaway spikes outside this repo, each needing Ethan's separate yes (they need `coremltools` and the Core AI tools in a scratch
-environment):**
-- **Spike A, public route.** One Evoformer block, forward, fp16, Neural Engine against GPU: accuracy against the fp32 reference, and time at 150, 250 and 400 residues.
-- **Spike B, private route.** Does the `maderix/ANE` pipeline run on an M3 Max under macOS 27 at all; throughput of an AlphaFold-shaped triangle contraction and
-  projection (as 1x1 convolutions) and of one block forward plus backward; which operations fall back.
+**Spike B (private route) was run on 2026-10-30; Spike A (public route) has not been.** Throwaway harness in the session scratchpad, not in this repo; the
+`maderix/ANE` bridge was built from source, patched only to print errors and time an in-C loop. Every figure below is MEASURED on this M3 Max (macOS 27.0.1),
+fp16 on the Neural Engine against MLX fp16 on the GPU (bf16 is the same to within 3%), same op and shape, GPU lock held. Each Neural Engine result was checked
+live and against a numpy fp32 reference using the same fp16-rounded weights. The project's own peak probe was not trusted: it never checks eval success or output,
+and its flat 0.45 ms per eval is a dispatch floor.
+
+- **It works.** The private path compiles, loads and runs on an M3 Max (the project documents M4 only). Relative error against fp32 is about 3e-4 for 1x1
+  convolutions and the contraction, 3e-3 for layer norm plus gate, 7e-3 through 16 chained layers, on random unit-scale data (not AlphaFold activations).
+- **Dispatch floor:** about 0.27 ms per eval. Marginal throughput once launches are amortized: about 6.7 TFLOP/s on 1x1 convolutions.
+- **Kernel time at N=256 (ms), Neural Engine / GPU, and how much faster the GPU is** (the Neural Engine copy time, host to chip and back at fp32, is in the last column):
+
+  | op | Neural Engine | GPU | GPU faster | with host copies |
+  |---|---|---|---|---|
+  | transition, 128 to 512 to 128, ReLU | 2.78 | 1.86 | 1.5x | 2.0x |
+  | 1x1 projection, 128 to 128 | 1.11 | 0.37 | 3.0x | 5.5x |
+  | backward-style conv, 512 to 128 | 2.74 | 0.88 | 3.1x | 6.5x |
+  | triangle contraction, batch 128 | 2.18 | 0.55 | 3.9x | 9.4x |
+  | layer norm, 2 projections, sigmoid gate | 4.02 | 1.37 | 2.9x | not measured |
+
+  The same ordering held at N=192 and N=384 (contraction N=384: 4.3 vs 1.3 ms). So the Neural Engine is not a speed play on any AlphaFold-shaped op tested.
+- **Concurrency (8 s runs, one repeat each, same op on both units, so noise of a few percent is possible):**
+  - transition: the Neural Engine kept 99% of its solo rate and the GPU 95%. Together 860 ops/s against 532 for the GPU alone, up to 1.6x for work that can be
+    split across the two.
+  - contraction (memory-bound): the Neural Engine kept 96% and the GPU fell to 78%. Together 1855 ops/s against 1809, about 1.0x: the units compete for memory.
+  - INFERRED: a real block mixes both kinds, so the gain from concurrency lies between 1.0x and 1.6x, and only for work that splits into whole independent
+    programs, such as another model of the ensemble or validation refolds.
+- **Limits found:** each tensor row must be a multiple of 64 bytes (N=150 and 250 failed with "IOSurface smaller than the model expects"; N a multiple of 16 at
+  fp32 passes, and the repo's 32-residue length buckets satisfy it); about 125 programs can be loaded at once ("no ANE resources" at 126), while 220 sequential
+  compile, load, free cycles succeeded and the temp directory did not grow; fp16 only (the repo's AlphaFold runs in bf16, whose range is wider, so fp16 overflow on real
+  pair activations is an open risk); a hand-spelled layer norm did not compile but the native `layer_norm` op did. NOT TESTED: softmax attention with bias, invariant
+  point attention, gathers, a whole Evoformer block, and the cost of moving tensors between MLX and the Neural Engine without the copies used here.
+- **Not built:** a full Evoformer block, forward and backward, on the Neural Engine. The kernels lose on speed, so it is a decision for Ethan whether it is worth the
+  effort at all.
 
 **What the answer could unlock (phase 2 candidates, not started):** validation refolds on the Neural Engine (forward only) while the GPU runs the next
 design's gradient steps; or, only if Spike B is good, one slice of the design gradient on it.
@@ -187,6 +215,6 @@ not already near the GPU's matmul ceiling).
 
 1. The parent's JAX runs on the CPU on this backend, with a setting to keep it on metaljax, decided by a measurement at the first checkpoint.
 2. Multimer first, monomer forward second; `trajectory_only` or `validation_model: multimer` is the first end-to-end milestone.
-3. The Neural Engine stays out of phase 1; two spikes would decide whether it earns a later phase, and neither starts without a separate yes.
+3. The Neural Engine stays out of phase 1. Spike B (private route) is done and shows the GPU 1.5x to 3.9x faster on every op tested, with a concurrency upside of at most 1.6x; Spike A (public route) is not run.
 4. The work lives on branch `mlx-backend` in `~/BindCraft2`, off `apple-silicon-metal`, committed locally, nothing pushed.
 5. The extra forward pass per gradient step is accepted as the price of keeping the loss in JAX.
