@@ -39,11 +39,12 @@ def slice_queries(tensor, start: int, end: int):
     return tensor if tensor is None or tensor.shape[-2] == 1 else tensor[..., start:end, :]
 
 def stock_attend(q, k, v, bias, nonbatched_bias):
-    #accel._attend_stock: logits [batch, head, query, key] plus the biases, clipped, softmax over the keys
+    #accel._attend_stock: logits [batch, head, query, key] plus the biases, clipped, softmax over the keys. precise=True: MLX's default softmax on bfloat16 is about 12x less accurate
+    #(1.9e-2 against 1.6e-3 relative to the exact result), which made the bf16 model's logits worse than the JAX bf16 model's; float32 inputs are unaffected
     logits = q.transpose(0, 2, 1, 3) @ k.transpose(0, 2, 3, 1) + bias
     if nonbatched_bias is not None:
         logits = logits + nonbatched_bias[None]
-    weights = mx.softmax(mx.clip(logits, -LOGIT_CLIP, LOGIT_CLIP), axis=-1)
+    weights = mx.softmax(mx.clip(logits, -LOGIT_CLIP, LOGIT_CLIP), axis=-1, precise=True)
     return (weights @ v.transpose(0, 2, 1, 3)).transpose(0, 2, 1, 3)
 
 def attend(q, k, v, bias, nonbatched_bias=None, chunk_size: int | None = ATTENTION_CHUNK):
@@ -80,7 +81,7 @@ def global_attention(p, q_data: mx.array, m_data: mx.array, q_mask: mx.array, cf
     q = (q_avg @ p.get('query_w', dtype).reshape(q_data.shape[-1], num_head * key_dim)).reshape(batch, num_head, key_dim) * key_dim ** -0.5
     k = m_data @ p.get('key_w', dtype)
     bias = 1e9 * (q_mask[:, None, :, 0] - 1.0)
-    weights = mx.softmax(q @ k.transpose(0, 2, 1) + bias, axis=-1)
+    weights = mx.softmax(q @ k.transpose(0, 2, 1) + bias, axis=-1, precise=True)
     weighted_avg = weights @ v
     output_weights = p.get('output_w', dtype)
     flat_output = output_weights.reshape(num_head * value_dim, output_weights.shape[-1])

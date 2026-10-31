@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 
 os.environ.setdefault('JAX_PLATFORMS', 'cpu')
+if '--strict-rounding' in sys.argv:  #XLA's CPU compiler keeps float32 between fused bfloat16 ops unless told not to (xla_allow_excess_precision), so the flag has to be set before jax is imported
+    os.environ['XLA_FLAGS'] = (os.environ.get('XLA_FLAGS', '') + ' --xla_allow_excess_precision=false').strip()
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tests' / 'mlx_af2'))
 
 import jax
@@ -100,11 +102,75 @@ def record_spread(root: Path, case: str) -> None:
     spread[case] = entry
     path.write_text(json.dumps(spread, indent=1))
 
+def position_noise_floor(case: str, epsilon: float = 1e-7, seed: int = 0) -> dict:
+    #how far the JAX model's own atoms move when msa_feat is perturbed by a relative epsilon (float32 rounding level): the yardstick for what a port's position error can be called
+    model = cases.build_model(case=case)
+    features = cases.model_inputs(case)
+    length = int(features['aatype'].shape[0])
+    runner = build_runner(cases.MULTIMER_MODEL, False, model.attention_backend, resolve_subbatch_size(length, 'auto'))
+    params = af_data.get_model_haiku_params(model_name=cases.MULTIMER_MODEL, data_dir=cases.params_path(), fuse=True)
+    forward = jax.jit(lambda f: recycled_alphafold_outputs(runner, params, model.key, f, 1)['structure_module'])
+    base = forward(features)
+    noise = jnp.asarray(np.random.default_rng(seed).standard_normal(features['msa_feat'].shape), jnp.float32)
+    moved = forward({**features, 'msa_feat': features['msa_feat'] * (1 + epsilon * noise)})
+    live = np.asarray(base['final_atom_mask']) > 0
+    deviation = np.linalg.norm(np.asarray(moved['final_atom_positions']) - np.asarray(base['final_atom_positions']), axis=-1)[live]
+    return {'epsilon': epsilon, 'max_angstrom': float(deviation.max()), 'mean_angstrom': float(deviation.mean())}
+
+def excess_precision_allowed() -> bool:
+    return 'xla_allow_excess_precision=false' not in os.environ.get('XLA_FLAGS', '')
+
+def bf16_ensemble(case: str, count: int = 6, epsilon: float = 4e-3) -> dict:
+    #the spread of the shipped bf16 model against fp32 as a RANGE, not one draw: each member nudges msa_feat by a relative epsilon at the bfloat16 rounding scale (2^-8 = 3.9e-3, so the rounding
+    #of most values changes; a nudge of 1e-4 changed it for about 3% and gave four near-identical members) and compares the JAX bf16 and fp32 outputs for that same input
+    model = cases.build_model(case=case)
+    features = cases.model_inputs(case)
+    length = int(features['aatype'].shape[0])
+    params = af_data.get_model_haiku_params(model_name=cases.MULTIMER_MODEL, data_dir=cases.params_path(), fuse=True)
+    forwards = {}
+    for label, low in (('fp32', False), ('bf16', True)):
+        runner = build_runner(cases.MULTIMER_MODEL, low, model.attention_backend, resolve_subbatch_size(length, 'auto'))
+        forwards[label] = jax.jit(lambda f, runner=runner: flatten_floats(recycled_alphafold_outputs(runner, params, model.key, f, 1)))
+    errors = {name: [] for name in OUTPUT_KEYS}
+    for member in range(count):
+        noise = jnp.asarray(np.random.default_rng(100 + member).standard_normal(features['msa_feat'].shape), jnp.float32)
+        nudged = {**features, 'msa_feat': features['msa_feat'] * (1 + epsilon * noise)}
+        low, high = forwards['bf16'](nudged), forwards['fp32'](nudged)
+        for name in OUTPUT_KEYS:
+            errors[name].append(rel_err(np.asarray(low[name], np.float32), np.asarray(high[name], np.float32)))
+    return {'epsilon': epsilon, 'allow_excess_precision': excess_precision_allowed(), 'errors': errors}
+
+def record_bf16_ensemble(root: Path, case: str, strict: bool = False) -> None:
+    #strict (--strict-rounding) rounds to bfloat16 after every op like bfloat16 hardware and like MLX; the default band is flattered by XLA-CPU's excess precision and is kept for comparison
+    assert strict == (not excess_precision_allowed()), 'the XLA flag does not match the requested ensemble: pass --strict-rounding on the command line'
+    path = root / 'spread.json'
+    spread = json.loads(path.read_text())
+    spread[case]['bf16_ensemble_strict' if strict else 'bf16_ensemble'] = bf16_ensemble(case)
+    path.write_text(json.dumps(spread, indent=1))
+
+def record_noise_floor(root: Path, case: str) -> None:
+    path = root / 'spread.json'
+    spread = json.loads(path.read_text())
+    spread[case]['position_noise_floor'] = position_noise_floor(case)
+    path.write_text(json.dumps(spread, indent=1))
+
 def main(argv=None) -> None:
     argv = sys.argv if argv is None else argv
     root = refs_root(argv)
     names = argv[argv.index('--cases') + 1:] if '--cases' in argv else ['small', 'medium']
     names = [name for name in names if not name.startswith('--') and name != str(root)]
+    if '--bf16-ensemble' in argv:
+        strict = '--strict-rounding' in argv
+        for case in names:
+            record_bf16_ensemble(root, case, strict)
+            ensemble = json.loads((root / 'spread.json').read_text())[case]['bf16_ensemble_strict' if strict else 'bf16_ensemble']['errors']
+            print(f'{case}: bf16 vs fp32 over the {"strict-rounding " if strict else ""}ensemble: ' + ', '.join(f'{name.split("/")[-2]}/{name.split("/")[-1]} {min(values):.3g}..{max(values):.3g}' for name, values in ensemble.items() if max(values) > 0), flush=True)
+        return
+    if '--noise-floor' in argv:
+        for case in names:
+            record_noise_floor(root, case)
+            print(f'{case}: position noise floor {json.loads((root / "spread.json").read_text())[case]["position_noise_floor"]}', flush=True)
+        return
     for case in names:
         for variant in ('fp32', 'bf16'):
             arrays, meta = capture_call(case, variant)

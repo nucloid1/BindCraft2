@@ -52,9 +52,14 @@ def front_arguments(case: str, state: str | None = None, seed: int = 0) -> dict:
             'residue_index': arrays['residue_index'], 'asym_id': residue_chain_ids(chain_lengths), 'entity_id': residue_entity_ids(state_chain_names, chain_lengths, multi_chain_binders),
             'interface_asym_id': interface_asym_ids(state_chain_names, chain_lengths), 'seq_mask': real_residue_weights(flags)}
 
-def model_inputs(case: str = 'small', state: str | None = None, dropout: bool = False, large_complex_initialization: bool = False) -> dict:
+def model_inputs(case: str = 'small', state: str | None = None, dropout: bool = False, large_complex_initialization: bool = False, extra_padding: int = 0) -> dict:
     #the feature dict AlphaFold receives for one state, built eagerly with the repo's own front (no jit, so every value is a concrete array)
     from bindcraft.af2 import alphafold_input_features, prepare_design_sequence_features
     a = front_arguments(case, state)
+    if extra_padding:  #dead residues at the end, padded as _predict_complex pads them: chain ids of a chain that does not exist, masks zero
+        chains = int(a['asym_id'].max()) + 1
+        pad = lambda array, value=0: jnp.pad(array, [(0, extra_padding)] + [(0, 0)] * (array.ndim - 1), constant_values=value)
+        a = {**a, 'sequence': pad(a['sequence']), 'atoms': pad(a['atoms']), 'atom_mask': pad(a['atom_mask']), 'flags': pad(a['flags']), 'residue_index': pad(a['residue_index']), 'asym_id': pad(a['asym_id'], chains),
+             'entity_id': pad(a['entity_id'], chains), 'interface_asym_id': pad(a['interface_asym_id'], chains), 'seq_mask': pad(a['seq_mask'])}
     sequence_features, sequence_profile = prepare_design_sequence_features(a['sequence'], a['flags'], jnp.asarray(1.0), jnp.asarray(1.0), jnp.asarray(0.01), jnp.asarray(2.0), None)
     return alphafold_input_features(sequence_features, sequence_profile, a['atoms'], a['atom_mask'], a['residue_index'], a['asym_id'], a['seq_mask'], a['flags'], jnp.asarray(dropout), 'direction', a['entity_id'], 0.0, large_complex_initialization)

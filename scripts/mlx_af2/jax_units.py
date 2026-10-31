@@ -41,14 +41,14 @@ def reference_params(scope: str, name: str, layer: int | None = None, model_name
     assert found, f'no parameters under {scope}'
     return found
 
-def run_unit(build, scope: str, name: str, inputs: list, layer: int | None = None, bfloat16: bool = False, subbatch_size=None, attention_backend: str = 'stock', model_name: str = MODEL, rng=None, adjust=None, keep_layers: int | None = None):
+def run_unit(build, scope: str, name: str, inputs: list, layer: int | None = None, bfloat16: bool = False, subbatch_size=None, attention_backend: str = 'stock', model_name: str = MODEL, rng=None, adjust=None, keep_layers: int | None = None, outer_bfloat16_context: bool = True):
     config, global_config = configs(model_name, bfloat16, subbatch_size, attention_backend)
     if adjust is not None:
         adjust(config)  #e.g. fewer blocks, templates off
     params = reference_params(scope, name, layer, model_name, keep_layers)
 
     def apply(*arguments):
-        with af_utils.bfloat16_context() if bfloat16 else contextlib.nullcontext():
+        with af_utils.bfloat16_context() if bfloat16 and outer_bfloat16_context else contextlib.nullcontext():  #modules that enter the context themselves (EmbeddingsAndEvoformer) must not be wrapped in it twice
             return build(config, global_config)(*arguments)
 
     result = hk.transform(apply).apply(params, jax.random.PRNGKey(0) if rng is None else rng, *[jax.tree.map(jnp.asarray, value) for value in inputs])  #inputs may be pytrees (dicts of activations); None stays None
