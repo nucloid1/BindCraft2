@@ -1,6 +1,10 @@
 import os
+import sys
+from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'mlx_af2'))  #jax_units and the capture scripts
 
 INTEGRATION_ENV = 'BINDCRAFT_MLX_INTEGRATION'
 

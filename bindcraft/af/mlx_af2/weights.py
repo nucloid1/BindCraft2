@@ -42,7 +42,7 @@ class Store:
     def __init__(self, tensors: dict[str, np.ndarray], sources: dict[str, list[str]], dtype, model_name: str):
         self.tensors, self.sources, self.dtype, self.model_name = tensors, sources, dtype, model_name
         self.used: set[str] = set()
-        self.cache: dict[str, mx.array] = {}
+        self.cache: dict[tuple[str, mx.Dtype], mx.array] = {}
 
 class Params:
     def __init__(self, store: Store, prefix: str = '', layer_index: int | None = None):
@@ -55,16 +55,20 @@ class Params:
         #the stacked tensors (the Evoformer, the extra-MSA stack, the template stack) are read at one layer; others are returned whole
         return Params(self.store, self.prefix, index)
 
-    def get(self, path: str) -> mx.array:
-        name = f'{self.prefix}{path}'
+    def get(self, path: str, dtype: mx.Dtype | None = None) -> mx.array:
+        #cast to dtype (default: the load dtype) when read; a layer that keeps its parameters in float32, as the repo's LayerNorm does, asks for mx.float32
+        name, dtype = f'{self.prefix}{path}', dtype or self.store.dtype
         if name not in self.store.tensors:
             raise KeyError(f'no AlphaFold parameter {name!r} in {self.store.model_name}')
         self.store.used.add(name)
-        if name not in self.store.cache:
+        if (name, dtype) not in self.store.cache:
             array = mx.array(self.store.tensors[name])
-            self.store.cache[name] = array.astype(self.store.dtype) if mx.issubdtype(array.dtype, mx.floating) else array
-        value = self.store.cache[name]
+            self.store.cache[(name, dtype)] = array.astype(dtype) if mx.issubdtype(array.dtype, mx.floating) else array
+        value = self.store.cache[(name, dtype)]
         return value[self.layer_index] if self.layer_index is not None and any(marker in name for marker in STACK_MARKERS) else value
+
+    def has(self, path: str) -> bool:
+        return f'{self.prefix}{path}' in self.store.tensors
 
     def stored(self, name: str) -> np.ndarray:
         return self.store.tensors[name]
