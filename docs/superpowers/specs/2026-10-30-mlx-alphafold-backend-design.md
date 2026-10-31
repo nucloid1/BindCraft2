@@ -149,18 +149,24 @@ and its flat 0.45 ms per eval is a dispatch floor.
 - **It works.** The private path compiles, loads and runs on an M3 Max (the project documents M4 only). Relative error against fp32 is about 3e-4 for 1x1
   convolutions and the contraction, 3e-3 for layer norm plus gate, 7e-3 through 16 chained layers, on random unit-scale data (not AlphaFold activations).
 - **Dispatch floor:** about 0.27 ms per eval. Marginal throughput once launches are amortized: about 6.7 TFLOP/s on 1x1 convolutions.
-- **Kernel time at N=256 (ms), Neural Engine / GPU, and how much faster the GPU is** (the Neural Engine copy time, host to chip and back at fp32, is in the last column):
+- **Kernel time at N=256 (ms), Neural Engine with fp16 buffers in and out against MLX fp16 on the GPU:**
 
-  | op | Neural Engine | GPU | GPU faster | with host copies |
-  |---|---|---|---|---|
-  | transition, 128 to 512 to 128, ReLU | 2.78 | 1.86 | 1.5x | 2.0x |
-  | 1x1 projection, 128 to 128 | 1.11 | 0.37 | 3.0x | 5.5x |
-  | backward-style conv, 512 to 128 | 2.74 | 0.88 | 3.1x | 6.5x |
-  | triangle contraction, batch 128 | 2.18 | 0.55 | 3.9x | 9.4x |
-  | layer norm, 2 projections, sigmoid gate | 4.02 | 1.37 | 2.9x | not measured |
+  | op | Neural Engine | GPU | GPU faster |
+  |---|---|---|---|
+  | transition, 128 to 512 to 128, ReLU | 2.84 | 1.86 | 1.5x |
+  | 1x1 projection, 128 to 128 | 0.59 | 0.37 | 1.6x |
+  | backward-style conv, 512 to 128 | 1.69 | 0.88 | 1.9x |
+  | triangle contraction, batch 128 | 1.56 | 0.55 | 2.8x |
+  | layer norm, 2 projections, sigmoid gate (fp32 buffers, not rerun) | 4.02 | 1.37 | 2.9x |
 
-  The same ordering held at N=192 and N=384 (contraction N=384: 4.3 vs 1.3 ms). So the Neural Engine is not a speed play on any AlphaFold-shaped op tested.
-- **Concurrency (8 s runs, one repeat each, same op on both units, so noise of a few percent is possible):**
+  **Correction.** The first run fed the Neural Engine fp32 buffers (twice the bytes of the GPU's fp16) and overstated the gap on the low-arithmetic ops: projection
+  3.0x, backward-style conv 3.1x, contraction 3.9x. The compute-bound transition does not change with buffer type (1.5x either way), which also says the Neural
+  Engine's dense compute is about 6.0 TFLOP/s against the GPU's 9.2 on this op. The fp16 rerun ran while another job held the GPU, so the Neural Engine figures in
+  it may be a few percent pessimistic (the fp32 rerun under the same load was within 12% of the clean first run); the GPU figures are from a clean run. Counting
+  the host-side copy of every buffer, as this harness does, the Neural Engine was 2x to 9x slower; a design that keeps tensors on the chip across a whole block would
+  not pay that. The ordering held at N=192 and N=384 in the fp32 runs.
+- **Concurrency (8 s runs, one repeat each, same op on both units, so noise of a few percent is possible; the Neural Engine ran with fp32 buffers, and a fp16 rerun
+  is pending because the GPU lock was taken, so the contraction figure may move; the compute-bound transition figure does not depend on buffer type):**
   - transition: the Neural Engine kept 99% of its solo rate and the GPU 95%. Together 860 ops/s against 532 for the GPU alone, up to 1.6x for work that can be
     split across the two.
   - contraction (memory-bound): the Neural Engine kept 96% and the GPU fell to 78%. Together 1855 ops/s against 1809, about 1.0x: the units compete for memory.
@@ -215,6 +221,6 @@ not already near the GPU's matmul ceiling).
 
 1. The parent's JAX runs on the CPU on this backend, with a setting to keep it on metaljax, decided by a measurement at the first checkpoint.
 2. Multimer first, monomer forward second; `trajectory_only` or `validation_model: multimer` is the first end-to-end milestone.
-3. The Neural Engine stays out of phase 1. Spike B (private route) is done and shows the GPU 1.5x to 3.9x faster on every op tested, with a concurrency upside of at most 1.6x; Spike A (public route) is not run.
+3. The Neural Engine stays out of phase 1. Spike B (private route) is done and shows the GPU 1.5x to 2.8x faster on every op tested (fp16 buffers), with a concurrency upside of at most 1.6x; Spike A (public route) is not run.
 4. The work lives on branch `mlx-backend` in `~/BindCraft2`, off `apple-silicon-metal`, committed locally, nothing pushed.
 5. The extra forward pass per gradient step is accepted as the price of keeping the loss in JAX.
