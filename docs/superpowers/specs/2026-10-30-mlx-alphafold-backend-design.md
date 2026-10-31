@@ -63,7 +63,7 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
 
 ## Non-goals
 
-- The Neural Engine, in any phase (see the record below). The loss, ProteinMPNN, the optimizer and the filters in MLX (a possible later phase). Training, new modalities,
+- The Neural Engine, in any phase (see the record below). The loss, ProteinMPNN, the optimizer and the filters in MLX in this phase; Ethan's rule (2026-10-30): if the CPU-side JAX work exceeds 20% of the MLX backend's wall time, it is ported in a second phase, otherwise not (the 20% is the author's call). Training, new modalities,
   changing any loss or setting. Multi-GPU. Running on Intel Macs. Replacing or removing the JAX paths.
 
 ## Anti-goals (a failure even if it technically works)
@@ -174,4 +174,5 @@ not already near the GPU's matmul ceiling).
 4. The work lives on branch `mlx-backend` in `~/BindCraft2`, off `apple-silicon-metal`, committed locally, nothing pushed.
 5. The extra forward pass per gradient step is accepted as the price of keeping the loss in JAX.
 6. The seam is a `custom_vjp` over `pure_callback` and the switch is `BINDCRAFT_BACKEND=mlx`, not a settings key or a predictor that orchestrates the three phases itself.
+8. The 20% threshold for the phase-2 trigger (Ethan said "if cpu jax is a bottleneck" without a number), measured first with an instant stub at Task 3 and finally in Task 20.
 7. The Evoformer blocks are shared by both families (they live in `modules.py`), so they are ported once and the monomer family needs only its own embeddings, templates, structure module and heads.
