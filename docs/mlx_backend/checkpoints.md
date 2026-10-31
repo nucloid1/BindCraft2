@@ -20,3 +20,21 @@ time at these three sizes is not measured yet because the shared GPU lock is hel
 
 Phase-2 trigger (Global Constraints of the plan: port the CPU-side JAX if it exceeds 20% of the MLX backend's wall time): at 9 to 33 ms a step, the front and the loss are a fraction
 of a percent of a step of several seconds (INFERRED from the README's figure), far below the threshold. ProteinMPNN and the filters are judged in Task 20.
+
+## References and the bf16 spread (2026-10-30)
+
+`scripts/mlx_af2/capture_refs.py` records, for each case and variant, one call of `recycled_alphafold_outputs` on the features the repo's own front builds (JAX on the CPU, dropout off, one
+recycle), the `jax.vjp` of every float output for seeded random cotangents, and the spread of the shipped bf16 model against fp32 (refs in `~/.cache/bindcraft_mlx_refs`, not in the repo).
+The bf16 runner is checked equal to the one `AlphaFoldDesignModel` builds. Capture time on the CPU: small 34 s fp32 and 50 s bf16, medium 107 s and 141 s.
+
+| output | small: rel. error bf16 vs fp32 | medium |
+|---|---|---|
+| final atom positions | 0.113 | 0.118 |
+| pLDDT logits | 0.032 | 0.021 |
+| PAE logits | 0.011 | 0.011 |
+| distogram logits | 0.0085 | 0.0083 |
+| experimentally-resolved logits | 0.019 | 0.018 |
+
+Gradient cosine, bf16 against fp32, for the sequence-dependent features: `msa_feat` 0.80 (small) and 0.79 (medium), `target_feat` 0.77 and 0.76. These cotangents are random over the
+outputs, so a real loss may align better, but the shipped bf16 gradient is demonstrably noisy against fp32, which is the README's warning about bf16 trajectories. The MLX bf16 model is
+judged against this spread, never against a tighter figure; the fp32 gates (1e-5 per stage, 1e-3 composite, cosine 0.999) are the exact ones.
