@@ -7,12 +7,14 @@ Protocol over the worker's stdin/stdout (stray prints go to stderr): each messag
 block, the worker puts its output in a block it creates and hands over (the parent copies it out and unlinks it).
 
     parent -> worker  ("load", {name, cfg})                                  register a model, answered with its handle (weights are read on first use)
-                      ("forward", {handle, num_recycle, subbatch_size, in_shm, layout})
+                      ("forward", {handle, call_id, num_recycle, subbatch_size, in_shm, layout})
+                      ("vjp", {handle, call_id, num_recycle, subbatch_size, diff_keys, in_shm, layout})   gradients of the features named in diff_keys for the cotangents in the block
                       ("stats", {})                                          the memory guard's sampled peaks and how many models hold weights
                       ("quit", None)
     worker -> parent  ("ready", {pid, jax_imported, torch_imported, device}) once, then ("ok", {...}) | ("error", traceback)
 
-A model handle is an integer the worker assigns at load; the parent embeds it in the jitted loss as the runtime argument that says which model to run. Weights stay resident for at most
+The parent numbers its forward calls (an id that never repeats, restarts included); the worker keeps the state before the final pass of the last MAX_CALLS of them, so a vjp for one of them skips the recycle
+passes, and recomputes that state when the id is unknown, evicted, or was issued for other inputs (handle, recycles or key differ). A model handle is an integer the worker assigns at load; the parent embeds it in the jitted loss as the runtime argument that says which model to run. Weights stay resident for at most
 MAX_LOADED models (least recently used goes first, and is read again if used again). A worker that dies (its memory guard, the OS, a crash) raises WorkerError naming the exit code and the memory cap;
 the next call starts a new one and the parent re-registers the models it had loaded, in order, so handles stay valid; the call that failed is never retried and there is never a fallback to another backend.
 """
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import collections
 import os
 import pickle
 import struct
@@ -36,6 +39,7 @@ Layout = List[Tuple[str, Tuple[int, ...], str, int]]  #(name, shape, dtype, byte
 ALIGN = 64
 DTYPES = ('bf16', 'fp32')
 MAX_LOADED = 5
+MAX_CALLS = 8
 DEVICE_ENV = 'BINDCRAFT_MLX_DEVICE'
 
 def send(stream, obj: Any) -> None:
@@ -101,6 +105,8 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
     with guard as peak:
         registry: Dict[int, dict] = {}
         resident: List[int] = []  #handles holding weights, least recently used first
+        calls: 'collections.OrderedDict[int, dict]' = collections.OrderedDict()  #call id -> the state before the final pass, oldest first
+        vjp_calls = {'hits': 0, 'misses': 0}
         send(proto_out, ('ready', {'pid': os.getpid(), 'jax_imported': 'jax' in sys.modules, 'torch_imported': 'torch' in sys.modules, 'device': device}))
 
         def model_for(handle: int):
@@ -142,17 +148,41 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
                     try:
                         arrays = views(block, request['layout'])
                         features = {name[2:]: mx.array(array) for name, array in arrays.items() if name.startswith('f/')}
-                        outputs, _ = model_for(request['handle']).forward(features, arrays['key'], request['num_recycle'], subbatch_size=request['subbatch_size'])
+                        outputs, _, before = model_for(request['handle']).forward_with_state(features, arrays['key'], request['num_recycle'], subbatch_size=request['subbatch_size'])
                         host = {name: np.array(value) for name, value in outputs.items()}
-                        del arrays, features
+                        calls[request['call_id']] = {'handle': request['handle'], 'num_recycle': request['num_recycle'], 'key': np.array(arrays['key']), 'prev': before}
+                        while len(calls) > MAX_CALLS:
+                            calls.popitem(last=False)
+                        del arrays, features, before
                     finally:
                         block.close()
                     out_block, layout = pack(host)
                     untrack(out_block)  #the parent unlinks it
                     out_block.close()
                     reply = {'out_shm': out_block.name, 'out_layout': layout}
+                elif kind == 'vjp':
+                    block = shared_memory.SharedMemory(name=request['in_shm'])
+                    untrack(block)
+                    try:
+                        arrays = views(block, request['layout'])
+                        features = {name[2:]: mx.array(array) for name, array in arrays.items() if name.startswith('f/')}
+                        cotangents = {name[2:]: mx.array(array) for name, array in arrays.items() if name.startswith('c/')}
+                        cached = calls.get(request['call_id'])
+                        hit = cached is not None and cached['handle'] == request['handle'] and cached['num_recycle'] == request['num_recycle'] and np.array_equal(cached['key'], arrays['key'])
+                        vjp_calls['hits' if hit else 'misses'] += 1
+                        gradients = model_for(request['handle']).vjp(features, arrays['key'], request['num_recycle'], cotangents, tuple(request['diff_keys']), prev=cached['prev'] if hit else None,
+                                                                    subbatch_size=request['subbatch_size'])
+                        host = {name: np.array(value) for name, value in gradients.items()}
+                        del arrays, features, cotangents, cached
+                    finally:
+                        block.close()
+                    out_block, layout = pack(host)
+                    untrack(out_block)
+                    out_block.close()
+                    reply = {'out_shm': out_block.name, 'out_layout': layout}
                 elif kind == 'stats':
-                    reply = {'peak': dict(peak or {}), 'loaded_models': len(resident), 'registered_models': len(registry)}
+                    reply = {'peak': dict(peak or {}), 'loaded_models': len(resident), 'registered_models': len(registry), 'cached_calls': len(calls), 'vjp_cache_hits': vjp_calls['hits'],
+                             'vjp_cache_misses': vjp_calls['misses']}
                 else:
                     raise ValueError(f'unknown request {kind!r}')
                 reply['seconds'] = time.perf_counter() - start
@@ -188,6 +218,7 @@ class RemoteModel:
         self.last_shm_names: List[str] = []
         self.payload_log: List[Tuple[str, int]] = []
         self.last_error: Optional[WorkerError] = None
+        self.last_call_id = 0  #never reset, so a call id issued before a restart cannot match a state the new worker holds for other inputs
         self.lock = threading.RLock()
 
     @classmethod
@@ -273,7 +304,7 @@ class RemoteModel:
 
     def stats(self) -> dict:
         reply = self.exchange('stats', {}, {})
-        return {**reply['peak'], 'loaded_models': reply['loaded_models'], 'registered_models': reply['registered_models']}
+        return {**reply['peak'], **{name: reply[name] for name in ('loaded_models', 'registered_models', 'cached_calls', 'vjp_cache_hits', 'vjp_cache_misses')}}
 
     def load(self, model_name: str, cfg: dict) -> int:
         #register a model and return its handle; the weights are read when it is first used
@@ -283,10 +314,7 @@ class RemoteModel:
                 self.registered.append((model_name, cfg))
             return handle
 
-    def forward(self, model_handle: int, key: np.ndarray, features: Dict[str, np.ndarray], num_recycle: int, subbatch_size: Optional[int]) -> Tuple[Dict[str, np.ndarray], int]:
-        arrays = {f'f/{name}': np.asarray(value) for name, value in features.items()}
-        arrays['key'] = np.asarray(key, dtype=np.uint32)
-        info = self.exchange('forward', {'handle': int(model_handle), 'num_recycle': int(num_recycle), 'subbatch_size': subbatch_size}, arrays)
+    def read_outputs(self, info: dict) -> Dict[str, np.ndarray]:
         block = shared_memory.SharedMemory(name=info['out_shm'])
         self.last_shm_names.append(block.name)
         try:
@@ -297,7 +325,26 @@ class RemoteModel:
             block.close()
             block.unlink()
         self.last_seconds = info['seconds']
-        return outputs, 0
+        return outputs
+
+    def forward(self, model_handle: int, key: np.ndarray, features: Dict[str, np.ndarray], num_recycle: int, subbatch_size: Optional[int]) -> Tuple[Dict[str, np.ndarray], int]:
+        #returns the outputs and the call id a later vjp names to reuse the recycle state
+        arrays = {f'f/{name}': np.asarray(value) for name, value in features.items()}
+        arrays['key'] = np.asarray(key, dtype=np.uint32)
+        with self.lock:
+            self.last_call_id += 1
+            call_id = self.last_call_id
+            info = self.exchange('forward', {'handle': int(model_handle), 'call_id': call_id, 'num_recycle': int(num_recycle), 'subbatch_size': subbatch_size}, arrays)
+        return self.read_outputs(info), call_id
+
+    def vjp(self, model_handle: int, call_id: int, key: np.ndarray, features: Dict[str, np.ndarray], num_recycle: int, subbatch_size: Optional[int], cotangents: Dict[str, np.ndarray],
+            diff_keys: Tuple[str, ...]) -> Dict[str, np.ndarray]:
+        #the gradients of the features named in diff_keys for cotangents given by output name (outputs with no entry get none); features and key are the forward call's
+        arrays = {f'f/{name}': np.asarray(value) for name, value in features.items()}
+        arrays.update({f'c/{name}': np.asarray(value) for name, value in cotangents.items()})
+        arrays['key'] = np.asarray(key, dtype=np.uint32)
+        info = self.exchange('vjp', {'handle': int(model_handle), 'call_id': int(call_id), 'num_recycle': int(num_recycle), 'subbatch_size': subbatch_size, 'diff_keys': tuple(diff_keys)}, arrays)
+        return self.read_outputs(info)
 
 if __name__ == '__main__':
     main()

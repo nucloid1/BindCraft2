@@ -43,14 +43,46 @@ class MultimerModel:
                 features = {**features, 'initial_atom_pos': prev['prev_pos']}
         return features, prev
 
-    def forward(self, features: dict, key, num_recycle: int, *, subbatch_size: int | None = None, use_dropout: bool | None = None) -> tuple[dict[str, mx.array], dict]:
-        #returns the flat outputs by OUTPUT_KEYS and the final previous state; key is the uint32 pair of a JAX PRNG key
+    def dropout_keys(self, features: dict, key, num_recycle: int, use_dropout: bool | None) -> list | None:
         use_dropout = bool(features.get('use_dropout', False)) if use_dropout is None else use_dropout
-        keys = None
-        if use_dropout:
-            seed = (int(key[0]) * 1000003 + int(key[1])) % (2 ** 31 - 1)  #the dropout streams are MLX's own: reproducible per key, not equal to JAX's
-            keys = list(mx.random.split(mx.random.key(seed), num_recycle + 1))
-        features, prev = self.recycle(features, keys, num_recycle, subbatch_size=subbatch_size)
-        outputs, prev = self.single_pass(features, prev, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=False)
+        if not use_dropout:
+            return None
+        seed = (int(key[0]) * 1000003 + int(key[1])) % (2 ** 31 - 1)  #the dropout streams are MLX's own: reproducible per key, not equal to JAX's
+        return list(mx.random.split(mx.random.key(seed), num_recycle + 1))
+
+    def final_features(self, features: dict, prev: dict, num_recycle: int) -> dict:
+        #recycle() rewrites initial_atom_pos after every pass, so the final pass sees the last recycle pass's positions; a caller that holds the state before the final pass applies the same rewrite
+        if num_recycle > 0 and 'initial_atom_pos' in features:
+            return {**features, 'initial_atom_pos': prev['prev_pos']}
+        return features
+
+    def forward_with_state(self, features: dict, key, num_recycle: int, *, subbatch_size: int | None = None, use_dropout: bool | None = None) -> tuple[dict[str, mx.array], dict, dict]:
+        #the flat outputs by OUTPUT_KEYS, the state after the final pass, and the state BEFORE it (what vjp resumes from: the recycle passes are not repeated); key is the uint32 pair of a JAX PRNG key
+        keys = self.dropout_keys(features, key, num_recycle, use_dropout)
+        features, before = self.recycle(features, keys, num_recycle, subbatch_size=subbatch_size)
+        outputs, after = self.single_pass(features, before, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=False)
         flat = {f'{group}/{name}': value for group, tensors in outputs.items() for name, value in tensors.items()}
-        return {name: flat[name].astype(mx.float32) for name in OUTPUT_KEYS}, prev
+        return {name: flat[name].astype(mx.float32) for name in OUTPUT_KEYS}, after, before
+
+    def forward(self, features: dict, key, num_recycle: int, *, subbatch_size: int | None = None, use_dropout: bool | None = None) -> tuple[dict[str, mx.array], dict]:
+        outputs, after, _ = self.forward_with_state(features, key, num_recycle, subbatch_size=subbatch_size, use_dropout=use_dropout)
+        return outputs, after
+
+    def vjp(self, features: dict, key, num_recycle: int, cotangents: dict[str, mx.array], diff_keys: tuple[str, ...], *, prev: dict | None = None, subbatch_size: int | None = None,
+            use_dropout: bool | None = None) -> dict[str, mx.array]:
+        #the gradient of sum(cotangent * output) with respect to the features named in diff_keys, through the final pass only (the recycle passes carry no gradient, as in recycled_alphafold_outputs); prev, the
+        #state before the final pass from forward_with_state, skips them; each Evoformer block is recomputed in the backward pass instead of kept. use_dropout follows the features' flag like forward does
+        keys = self.dropout_keys(features, key, num_recycle, use_dropout)
+        if prev is None:
+            features, prev = self.recycle(features, keys, num_recycle, subbatch_size=subbatch_size)
+        else:
+            features = self.final_features(features, prev, num_recycle)
+        names = [name for name in OUTPUT_KEYS if name in cotangents]
+
+        def final(*arrays):
+            outputs, _ = self.single_pass({**features, **dict(zip(diff_keys, arrays))}, prev, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=True)
+            flat = {f'{group}/{name}': value for group, tensors in outputs.items() for name, value in tensors.items()}
+            return [flat[name].astype(mx.float32) for name in names]
+
+        _, gradients = mx.vjp(final, [features[name] for name in diff_keys], [cotangents[name] for name in names])
+        return dict(zip(diff_keys, gradients))
