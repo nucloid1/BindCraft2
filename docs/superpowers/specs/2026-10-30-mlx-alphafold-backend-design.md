@@ -174,5 +174,5 @@ not already near the GPU's matmul ceiling).
 4. The work lives on branch `mlx-backend` in `~/BindCraft2`, off `apple-silicon-metal`, committed locally, nothing pushed.
 5. The extra forward pass per gradient step is accepted as the price of keeping the loss in JAX.
 6. The seam is a `custom_vjp` over `pure_callback` and the switch is `BINDCRAFT_BACKEND=mlx`, not a settings key or a predictor that orchestrates the three phases itself.
-8. The 20% threshold for the phase-2 trigger (Ethan said "if cpu jax is a bottleneck" without a number), measured first with an instant stub at Task 3 and finally in Task 20.
 7. The Evoformer blocks are shared by both families (they live in `modules.py`), so they are ported once and the monomer family needs only its own embeddings, templates, structure module and heads.
+8. The 20% threshold for the phase-2 trigger (Ethan said "if cpu jax is a bottleneck" without a number), measured first with an instant stub at Task 3 and finally in Task 20.
