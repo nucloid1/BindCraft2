@@ -70,6 +70,9 @@ class Rot3:
     def __getitem__(self, index):
         return Rot3(*[component[index] for component in self.components()])
 
+    def map(self, function):
+        return Rot3(*[function(component) for component in self.components()])
+
     def inverse(self):
         return Rot3(self.xx, self.yx, self.zx, self.xy, self.yy, self.zy, self.xz, self.yz, self.zz)
 
@@ -120,6 +123,9 @@ class Rigid3:
 
     def __getitem__(self, index):
         return Rigid3(self.rotation[index], self.translation[index])
+
+    def map(self, function):
+        return Rigid3(self.rotation.map(function), self.translation.map(function))
 
     def __matmul__(self, other):
         return Rigid3(self.rotation @ other.rotation, self.apply_to_point(other.translation))

@@ -1,11 +1,11 @@
 #The structure module (folding_multimer.py): the invariant point attention, the fold iteration that updates the activations and the backbone frames, and the eight-iteration backbone loop.
-#It runs in float32 whatever the model's compute dtype, as the JAX module does. The sidechains and the atom positions are added below by a later task.
+#It runs in float32 whatever the model's compute dtype, as the JAX module does.
 import math
 
 import mlx.core as mx
 
 from bindcraft.af.alphafold.common import residue_constants
-from bindcraft.af.mlx_af2 import geometry, layers
+from bindcraft.af.mlx_af2 import all_atom, geometry, layers
 
 def softplus(x: mx.array) -> mx.array:
     return mx.logaddexp(x, mx.zeros_like(x))
@@ -65,11 +65,27 @@ def fold_iteration(p, act: mx.array, rigid: geometry.Rigid3, sequence_mask: mx.a
         rigid = rigid @ quat_rigid(p.scope('quat_rigid'), act)
     return act, rigid
 
-def backbone_trajectory(p, representations: dict, features: dict, cfg: dict, *, dropout_key=None) -> tuple[mx.array, list[geometry.Rigid3]]:
-    #generate_monomer_rigids without the sidechains: returns the final activations and the rigid after each of the iterations, in units of position_scale
+def l2_normalize(x: mx.array, axis: int = -1, epsilon: float = 1e-12) -> mx.array:
+    return x / mx.sqrt(mx.maximum(mx.sum(x ** 2, axis=axis, keepdims=True), epsilon))
+
+def sidechains(p, rigid: geometry.Rigid3, representations_list: list, aatype: mx.array, cfg: dict) -> dict:
+    #MultiRigidSidechain: residual blocks over the summed projections give seven torsion angles, which with the backbone frames give every rigid group frame and the atom14 coordinates
+    act = sum(layers.linear(p.scope('input_projection' if index == 0 else f'input_projection_{index}'), mx.maximum(x, 0)) for index, x in enumerate(representations_list))
+    for block in range(cfg['num_residual_block']):
+        suffix = '' if block == 0 else f'_{block}'
+        old = act
+        act = layers.linear(p.scope(f'resblock1{suffix}'), mx.maximum(act, 0))
+        act = layers.linear(p.scope(f'resblock2{suffix}'), mx.maximum(act, 0)) + old
+    unnormalized = layers.linear(p.scope('unnormalized_angles'), mx.maximum(act, 0)).reshape(act.shape[0], 7, 2)
+    angles = l2_normalize(unnormalized)
+    frames = all_atom.torsion_angles_to_frames(aatype, rigid, angles)
+    return {'angles_sin_cos': angles, 'unnormalized_angles_sin_cos': unnormalized, 'atom_pos': all_atom.frames_and_literature_positions_to_atom14_pos(aatype, frames), 'frames': frames}
+
+def generate_rigids(p, representations: dict, features: dict, cfg: dict, *, dropout_key=None) -> dict:
+    #generate_monomer_rigids up to the sidechains: the activations and the rigid after each iteration, in units of position_scale
     sequence_mask = features['seq_mask'][:, None]
-    act = layers.layer_norm(p.scope('single_layer_norm'), representations['single'])
-    act = layers.linear(p.scope('initial_projection'), act)
+    initial_act = layers.layer_norm(p.scope('single_layer_norm'), representations['single'])
+    act = layers.linear(p.scope('initial_projection'), initial_act)
     if 'initial_atom_pos' in features:
         atoms, order = features['initial_atom_pos'].astype(mx.float32), residue_constants.atom_order
         rigid = geometry.make_transform_from_reference(*[geometry.Vec3.from_array(atoms[:, order[name]]) for name in ('N', 'CA', 'C')]).scale_translation(1.0 / cfg['position_scale'])
@@ -77,8 +93,27 @@ def backbone_trajectory(p, representations: dict, features: dict, cfg: dict, *, 
         rigid = geometry.Rigid3.identity((sequence_mask.shape[0],))
     static_feat_2d = layers.layer_norm(p.scope('pair_layer_norm'), representations['pair'])
     keys = list(mx.random.split(dropout_key, cfg['num_layer'])) if dropout_key is not None else [None] * cfg['num_layer']
-    trajectory = []
+    acts, rigids = [], []
     for index in range(cfg['num_layer']):
         act, rigid = fold_iteration(p.scope('fold_iteration'), act, rigid, sequence_mask, static_feat_2d, cfg, dropout_key=keys[index])
-        trajectory.append(rigid)
-    return act, trajectory
+        acts.append(act)
+        rigids.append(rigid)
+    return {'act': act, 'acts': acts, 'rigids': rigids, 'initial_act': initial_act}
+
+def backbone_trajectory(p, representations: dict, features: dict, cfg: dict, *, dropout_key=None) -> tuple[mx.array, list[geometry.Rigid3]]:
+    generated = generate_rigids(p, representations, features, cfg, dropout_key=dropout_key)
+    return generated['act'], generated['rigids']
+
+def structure_module(p, representations: dict, features: dict, cfg: dict, *, dropout_key=None) -> dict:
+    #StructureModule.__call__: the outputs of the JAX head by name, with the per-iteration ones stacked on a leading axis of num_layer
+    generated = generate_rigids(p, representations, features, cfg, dropout_key=dropout_key)
+    aatype, seq_mask, scale = features['aatype'], features['seq_mask'], cfg['position_scale']
+    per_iteration = [sidechains(p.scope('fold_iteration').scope('rigid_sidechain'), rigid.scale_translation(scale), [act, generated['initial_act']], aatype, cfg['sidechain'])
+                     for act, rigid in zip(generated['acts'], generated['rigids'])]
+    traj = mx.stack([rigid.scale_translation(scale).to_array() for rigid in generated['rigids']])
+    stacked = {'angles_sin_cos': mx.stack([sc['angles_sin_cos'] for sc in per_iteration]), 'unnormalized_angles_sin_cos': mx.stack([sc['unnormalized_angles_sin_cos'] for sc in per_iteration]),
+               'atom_pos': mx.stack([sc['atom_pos'].to_array() for sc in per_iteration]), 'frames': mx.stack([sc['frames'].to_array() for sc in per_iteration])}
+    atom14_positions = stacked['atom_pos'][-1]
+    atom37_mask = all_atom.atom37_mask(aatype) * seq_mask[:, None]
+    return {'traj': traj, 'sidechains': stacked, 'final_atom14_positions': atom14_positions, 'final_atom14_mask': all_atom.atom14_mask(aatype) * seq_mask[:, None],
+            'final_atom_positions': all_atom.atom14_to_atom37(atom14_positions, aatype) * atom37_mask[:, :, None], 'final_atom_mask': atom37_mask, 'final_rigids': traj[-1], 'act': generated['act']}
