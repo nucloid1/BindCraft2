@@ -38,3 +38,19 @@ The bf16 runner is checked equal to the one `AlphaFoldDesignModel` builds. Captu
 Gradient cosine, bf16 against fp32, for the sequence-dependent features: `msa_feat` 0.80 (small) and 0.79 (medium), `target_feat` 0.77 and 0.76. These cotangents are random over the
 outputs, so a real loss may align better, but the shipped bf16 gradient is demonstrably noisy against fp32, which is the README's warning about bf16 trajectories. The MLX bf16 model is
 judged against this spread, never against a tighter figure; the fp32 gates (1e-5 per stage, 1e-3 composite, cosine 0.999) are the exact ones.
+
+## Evoformer stack accuracy (2026-10-30, fp32, MLX on the CPU device against the vendored JAX block chained layer by layer)
+
+Random activations of unit-ish scale (3 MSA rows, 10 residues) through the real weights of `model_1_multimer_v3`; the pair activations grow to an RMS near 3,000 by block 48, so this is not a benign regime.
+
+| blocks | MSA rel. error | pair rel. error |
+|---|---|---|
+| 1 | 5.7e-7 | 2.4e-7 |
+| 12 | 4.3e-7 | 1.5e-7 |
+| 48 | 4.6e-7 | 1.1e-7 |
+
+No growth with depth. The plan's gates are 1e-5 per block and 1e-3 for a stack.
+
+## Checkpoint 1: one Evoformer block, forward and forward plus backward (speed)
+
+NOT TAKEN YET: it needs the GPU for both MLX and the metaljax reference, and the shared lock is held by Ethan's RFD4 job. To be filled in when the lock is free.

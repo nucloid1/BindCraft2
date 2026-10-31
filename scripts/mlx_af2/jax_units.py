@@ -40,7 +40,7 @@ def reference_params(scope: str, name: str, layer: int | None = None, model_name
     assert found, f'no parameters under {scope}'
     return found
 
-def run_unit(build, scope: str, name: str, inputs: list, layer: int | None = None, bfloat16: bool = False, subbatch_size=None, attention_backend: str = 'stock', model_name: str = MODEL):
+def run_unit(build, scope: str, name: str, inputs: list, layer: int | None = None, bfloat16: bool = False, subbatch_size=None, attention_backend: str = 'stock', model_name: str = MODEL, rng=None):
     config, global_config = configs(model_name, bfloat16, subbatch_size, attention_backend)
     params = reference_params(scope, name, layer, model_name)
 
@@ -48,5 +48,5 @@ def run_unit(build, scope: str, name: str, inputs: list, layer: int | None = Non
         with af_utils.bfloat16_context() if bfloat16 else contextlib.nullcontext():
             return build(config, global_config)(*arguments)
 
-    result = hk.transform(apply).apply(params, None, *[None if value is None else jnp.asarray(value) for value in inputs])
+    result = hk.transform(apply).apply(params, jax.random.PRNGKey(0) if rng is None else rng, *[jax.tree.map(jnp.asarray, value) for value in inputs])  #inputs may be pytrees (dicts of activations); None stays None
     return jax.tree.map(np.asarray, result)
