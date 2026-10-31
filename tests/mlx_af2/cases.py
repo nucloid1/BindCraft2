@@ -10,8 +10,9 @@ from bindcraft.prediction import collect_shared_chains, concatenate_chain_arrays
 from bindcraft.protein_preparation import initialize_design_trajectory
 from bindcraft.settings import build_design_settings, load_settings
 
+#large: hIL2R, two chains (196 + 191) with a 30-residue binder, about 420 residues
 #small: hPDL1 (115) + a 30-residue binder = 145, bucket 160; medium: hIL7RA (195) + a 60-residue binder = 255, bucket 256
-CASES = {'small': ('hPDL1', 30), 'medium': ('hIL7RA', 60)}
+CASES = {'small': ('hPDL1', 30), 'medium': ('hIL7RA', 60), 'pair': (['hPDL1', 'mPDL1'], 30), 'large': ('hIL2R', 30)}  #pair: two states (human and mouse PD-L1) with different shapes, as in examples/pdl1_ortholog_pair.json
 MULTIMER_MODEL = 'model_1_multimer_v3'
 
 def params_path() -> str:
@@ -30,7 +31,7 @@ def design_inputs(case: str, seed: int = 0):
 def build_model(model_class=AlphaFoldDesignModel, case: str = 'small', models: tuple[str, ...] = (MULTIMER_MODEL,), **overrides):
     #a deterministic model: dropout off, one recycle, the length bucket the repo uses for the case
     settings = case_settings(case)
-    arguments = dict(presets=models, data_dir=params_path(), max_cache_size=4, num_recycle=1, models=models, dropout=False, length_bucket_size=settings.get('length_bucket_size', 32) or 32)
+    arguments = dict(target_pad_length=128 if case == 'pair' else 0, presets=models, data_dir=params_path(), max_cache_size=4, num_recycle=1, models=models, dropout=False, length_bucket_size=settings.get('length_bucket_size', 32) or 32)
     arguments.update(overrides)
     return model_class(**arguments)
 
@@ -50,3 +51,10 @@ def front_arguments(case: str, state: str | None = None, seed: int = 0) -> dict:
     return {'sequence': jnp.concatenate([shared_chains[name].sequence for name in state_chain_names], axis=0), 'atoms': arrays['atoms'], 'atom_mask': arrays['atom_mask'], 'flags': flags,
             'residue_index': arrays['residue_index'], 'asym_id': residue_chain_ids(chain_lengths), 'entity_id': residue_entity_ids(state_chain_names, chain_lengths, multi_chain_binders),
             'interface_asym_id': interface_asym_ids(state_chain_names, chain_lengths), 'seq_mask': real_residue_weights(flags)}
+
+def model_inputs(case: str = 'small', state: str | None = None, dropout: bool = False, large_complex_initialization: bool = False) -> dict:
+    #the feature dict AlphaFold receives for one state, built eagerly with the repo's own front (no jit, so every value is a concrete array)
+    from bindcraft.af2 import alphafold_input_features, prepare_design_sequence_features
+    a = front_arguments(case, state)
+    sequence_features, sequence_profile = prepare_design_sequence_features(a['sequence'], a['flags'], jnp.asarray(1.0), jnp.asarray(1.0), jnp.asarray(0.01), jnp.asarray(2.0), None)
+    return alphafold_input_features(sequence_features, sequence_profile, a['atoms'], a['atom_mask'], a['residue_index'], a['asym_id'], a['seq_mask'], a['flags'], jnp.asarray(dropout), 'direction', a['entity_id'], 0.0, large_complex_initialization)
