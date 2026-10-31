@@ -21,10 +21,18 @@ def linear(p, x: mx.array, *, num_input_dims: int = 1) -> mx.array:
     out = (x.reshape(*lead, math.prod(in_shape)) @ weights.reshape(math.prod(in_shape), math.prod(out_shape))).reshape(*lead, *out_shape)
     return out + p.get('bias', x.dtype) if p.has('bias') else out
 
-def layer_norm(p, x: mx.array, eps: float = 1e-5) -> mx.array:
-    #the repo's LayerNorm: bfloat16 input is normalised in float32 with float32 parameters and cast back
+def layer_norm(p, x: mx.array, eps: float = 1e-5, fast_variance: bool = False) -> mx.array:
+    #the repo's LayerNorm: bfloat16 input is normalised in float32 with float32 parameters and cast back. fast_variance is haiku's E[x^2] - E[x]^2 clamped at zero, which the triangle
+    #multiplication's two norms use (modules._layer_norm); it differs from the exact variance when the mean is large
     low = x.dtype == mx.bfloat16
-    out = mx.fast.layer_norm(x.astype(mx.float32) if low else x, p.get('scale', mx.float32), p.get('offset', mx.float32), eps)
+    x = x.astype(mx.float32) if low else x
+    scale, offset = p.get('scale', mx.float32), p.get('offset', mx.float32)
+    if fast_variance:
+        mean = mx.mean(x, axis=-1, keepdims=True)
+        variance = mx.maximum(mx.mean(mx.square(x), axis=-1, keepdims=True) - mx.square(mean), 0.0)
+        out = (x - mean) * mx.rsqrt(variance + eps) * scale + offset
+    else:
+        out = mx.fast.layer_norm(x, scale, offset, eps)
     return out.astype(mx.bfloat16) if low else out
 
 def slice_queries(tensor, start: int, end: int):

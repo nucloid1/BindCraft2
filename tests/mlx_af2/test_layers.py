@@ -118,3 +118,13 @@ def test_transition_matches_and_subbatch_equals_unbatched(params):
     got = np.asarray(layers.transition(p, mx.array(x), mx.array(mask), cfg.to_dict()))
     assert rel_err(got, want) < 1e-5
     assert rel_err(np.asarray(layers.transition(p, mx.array(x), mx.array(mask), cfg.to_dict(), subbatch_size=4)), got) < 1e-6
+
+@pytest.mark.integration
+def test_layer_norm_fast_variance_matches_haiku(params):
+    #the triangle multiplication's two norms use haiku's fast variance, E[x^2] - E[x]^2 clamped at zero, so the port must too: with a mean of 6 over a spread of 1 the cancellation noise
+    #of the formula (about 1e-6) is below the gate, while at a mean of 40 over 0.5 even two correct float32 summation orders differ by 5e-4
+    x = normal((6, 6, 128), 60) + 6.0
+    scope = f'{EVO}/triangle_multiplication_outgoing/left_norm_input'
+    want = jax_units.run_unit(lambda c, g: af_modules._layer_norm(axis=-1, name='left_norm_input'), scope, 'left_norm_input', [x], layer=0)
+    p = params.scope(scope).layer(0)
+    assert rel_err(np.asarray(layers.layer_norm(p, mx.array(x), fast_variance=True)), want) < 1e-5

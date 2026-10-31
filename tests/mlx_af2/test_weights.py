@@ -70,3 +70,29 @@ def test_unused_reports_what_was_not_read():
     assert 'evoformer/evoformer_iteration/triangle_multiplication_outgoing/gate/weights' not in params.unused()
     with pytest.raises(AssertionError, match='unused'):
         params.assert_all_used()
+
+PTM = 'model_1_ptm'
+
+@pytest.mark.integration
+def test_the_multimer_v3_file_is_stored_fused_so_the_fusing_code_needs_a_ptm_file():
+    raw = raw_npz()
+    unfused = ('left_projection', 'right_projection', 'left_gate', 'right_gate', 'center_layer_norm', 'layer_norm_input')
+    assert not any('triangle_multiplication' in name and any(f'/{part}//' in name for part in unfused) for name in raw)  #(the outer product mean has its own left and right projections: a different thing)
+    assert any('triangle_multiplication_outgoing/projection//weights' in name for name in raw)
+
+@pytest.mark.integration
+def test_ptm_files_are_fused_on_load_exactly_as_the_jax_loader_does():
+    from bindcraft.af.alphafold.model import data as af_data
+    raw = np.load(os.path.join(cases.params_path(), f'params_{PTM}.npz'), allow_pickle=False)
+    assert any('left_projection' in name for name in raw.files)  #stored unfused, so the fusing runs
+    params = load_params(PTM, cases.params_path(), dtype=mx.float32)
+    prefix = 'alphafold/alphafold_iteration/'
+    reference = af_data.get_model_haiku_params(model_name=PTM, data_dir=cases.params_path(), fuse=True)
+    flat = {f'{scope}/{name}'.removeprefix(prefix): np.asarray(array) for scope, tensors in reference.items() for name, array in tensors.items()}
+    assert sorted(params.names()) == sorted(flat)
+    for name, want in flat.items():
+        got = np.asarray(params.get(name))
+        assert got.shape == want.shape and np.array_equal(got, want), name
+    assert sorted(source for name in params.names() for source in params.sources(name)) == sorted(raw.files)
+    fused = [name for name in params.names() if name.endswith('triangle_multiplication_outgoing/gate/weights') and params.sources(name)[1:]]
+    assert fused and [source.split('//')[0].split('/')[-1] for source in params.sources(fused[0])] == ['left_gate', 'right_gate']
