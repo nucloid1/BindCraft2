@@ -7,6 +7,13 @@ BACKENDS = ('jax', 'mlx')
 def apple_silicon() -> bool:
     return sys.platform == 'darwin' and platform.machine() == 'arm64'
 
+def design_model_class() -> type:
+    if resolve_backend() == 'mlx':
+        from bindcraft.af.mlx_af2.predictor import MlxAlphaFoldDesignModel
+        return MlxAlphaFoldDesignModel
+    from bindcraft.af2 import AlphaFoldDesignModel
+    return AlphaFoldDesignModel
+
 def resolve_backend() -> str:
     backend = os.environ.get('BINDCRAFT_BACKEND', 'jax')
     if backend not in BACKENDS:

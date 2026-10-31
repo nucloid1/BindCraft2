@@ -326,10 +326,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
             self.model_families[model_name] = model_family
             self.model_family_models.setdefault(model_family, model_name)
             self._alphafold_runner(model_family, resolve_subbatch_size(4, self.subbatch_size))
-            model_parameters = af_data.get_model_haiku_params(model_name=model_name, data_dir=data_dir, fuse=True) if data_dir else None
-            if model_parameters is None:
-                raise ValueError(f'no AlphaFold parameters for {model_name!r} in data_dir {data_dir!r}; run "bindcraft fetch-weights" to download them')
-            self.model_parameters[model_name] = model_parameters
+            self.model_parameters[model_name] = self._load_parameters(model_name, data_dir)
         self.prediction_compile_cache = CompiledModelCache(max_cache_size)
         self.gradient_compile_cache = CompiledModelCache(max_cache_size)
         self.shape_attention_backend: dict = {}
@@ -337,6 +334,16 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
         self.executed_lengths: set[int] = set()
         self.last_attention_backend = self.attention_backend
         self.compiled_shapes: set = set()
+
+    def _load_parameters(self, model_name: str, data_dir: str | None) -> object:
+        model_parameters = af_data.get_model_haiku_params(model_name=model_name, data_dir=data_dir, fuse=True) if data_dir else None
+        if model_parameters is None:
+            raise ValueError(f'no AlphaFold parameters for {model_name!r} in data_dir {data_dir!r}; run "bindcraft fetch-weights" to download them')
+        return model_parameters
+
+    #the one call that runs AlphaFold inside the jitted functions; a backend swaps it. Both compile caches are keyed by model family, so which model runs must come from model_parameters, the argument that differs per model
+    def _model_outputs(self, alphafold_runner, model_parameters, key: Array, model_inputs: dict) -> dict:
+        return recycled_alphafold_outputs(alphafold_runner, model_parameters, key, model_inputs, self.num_recycle)
 
     def subbatch_ladder(self) -> tuple:
         return SUBBATCH_LADDER if self.subbatch_size == 'auto' else (self.subbatch_size,)
@@ -381,7 +388,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
             def predict_complex_arrays(model_parameters: Array, key: Array, sequence: Array, atoms: Array, atom_mask: Array, residue_index: Array, asym_id: Array, entity_id: Array, interface_asym_id: Array, seq_mask: Array, flags: Array, dropout: Array, softmax_weight: Array, one_hot_weight: Array, temperature: Array, logit_scale: Array):
                 sequence_features, sequence_profile = prepare_design_sequence_features(sequence, flags, softmax_weight, one_hot_weight, temperature, logit_scale, self.amino_acid_bias)
                 model_inputs = alphafold_input_features(sequence_features, sequence_profile, atoms, atom_mask, residue_index, asym_id, seq_mask, flags, dropout, self.cyclic_offset_mode, entity_id, self.target_flexibility, self.large_complex_initialization)
-                alphafold_outputs = recycled_alphafold_outputs(alphafold_runner, model_parameters, key, model_inputs, self.num_recycle)
+                alphafold_outputs = self._model_outputs(alphafold_runner, model_parameters, key, model_inputs)
                 predicted_atom_positions = alphafold_outputs['structure_module']['final_atom_positions'].astype(jnp.float16)
                 predicted_atom_mask = alphafold_outputs['structure_module']['final_atom_mask'].astype(bool)
                 return predicted_atom_positions, predicted_atom_mask, alphafold_prediction_metrics(alphafold_outputs, seq_mask, interface_asym_id)
@@ -473,7 +480,7 @@ class AlphaFoldDesignModel(DifferentiableProteinPredictor):
                 seq_mask = real_residue_weights(flags)
                 sequence_features, sequence_profile = prepare_design_sequence_features(sequence, flags, softmax_weight, one_hot_weight, temperature, logit_scale, self.amino_acid_bias)
                 model_inputs = alphafold_input_features(sequence_features, sequence_profile, atoms, atom_mask, residue_index, asym_id, seq_mask, flags, dropout, self.cyclic_offset_mode, entity_id, self.target_flexibility, self.large_complex_initialization)
-                alphafold_outputs = recycled_alphafold_outputs(alphafold_runner, model_parameters, key, model_inputs, self.num_recycle)
+                alphafold_outputs = self._model_outputs(alphafold_runner, model_parameters, key, model_inputs)
                 predicted_atom_positions = alphafold_outputs['structure_module']['final_atom_positions'].astype(jnp.float16)
                 predicted_atom_mask = alphafold_outputs['structure_module']['final_atom_mask'].astype(bool)
                 metrics = alphafold_prediction_metrics(alphafold_outputs, seq_mask, interface_asym_ids(chain_names, chain_lengths))
