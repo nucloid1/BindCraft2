@@ -38,3 +38,10 @@ def params_dir():
     if not os.path.isdir(path):
         pytest.fail(f'no AlphaFold parameters at {path}; run bindcraft fetch-weights', pytrace=False)
     return path
+
+@pytest.fixture(autouse=True)
+def mlx_device(request):
+    #unit parity tests run MLX on the CPU so they never touch the GPU, which another run may hold; only gpu-marked tests, which hold the lock, get the GPU
+    import mlx.core as mx
+    mx.set_default_device(mx.gpu if request.node.get_closest_marker('gpu') else mx.cpu)
+    yield
