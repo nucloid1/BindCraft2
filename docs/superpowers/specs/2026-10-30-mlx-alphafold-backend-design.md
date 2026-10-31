@@ -76,8 +76,10 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
 
 ## Shape of the solution
 
-- **A new predictor class** implementing the same protocol as `AlphaFoldDesignModel`, chosen where `campaign.py` builds the model, by an explicit
-  backend setting (opt-in at first; making it the Apple default is Ethan's decision after it is verified).
+- **A subclass of the existing predictor, chosen by one switch.** `MlxAlphaFoldDesignModel(AlphaFoldDesignModel)` overrides three hooks that `af2.py` gains in a
+  behaviour-preserving refactor (loading parameters, building the runner, producing model outputs). The switch is the environment variable `BINDCRAFT_BACKEND=mlx` (my call:
+  JAX's platform is fixed at import, before any settings file is read, so a settings key cannot select it). Opt-in; making it the Apple default is Ethan's decision after
+  verification.
 - **MLX in a worker process.** The model (embeddings, template stack, extra-MSA stack, Evoformer, structure module, heads) runs in a persistent
   child process that never imports JAX; arrays cross by shared memory. This is the pattern of the earlier ports (an MLX process that has done
   other CPU-side framework work ran about a third slower in Mol-1's measurements, cured by a process boundary). The parent keeps JAX, forced onto the
@@ -85,15 +87,14 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
   plugin is not needed on this path. **My call, and the one to check first:** ProteinMPNN, the filters and the rest of `bindcraft/` are JAX too
   (`proteinmpnn.py`, `MPNN_stage.py`, `filters.py`), so they move to the CPU with the parent, at a cost nobody has measured. It is measured at the
   first checkpoint. A setting can leave the parent on metaljax instead (the plugin then stays a dependency and the two processes share the GPU). The cross-boundary arrays are small (logits and positions of the order of 10 MB per step at 300 residues).
-- **The call contract.** `forward(model, features, dropout/rng) -> outputs` and `vjp(model, features, cotangents) -> d(features)`. JAX computes the
-  loss from the outputs and its gradient with respect to the outputs (the cotangents); MLX returns the gradient with respect to the float input
-  features (`msa_feat`, `target_feat`, ...), which JAX chains into the sequence logits through the front part with `jax.vjp`. Because the cotangents
-  depend on the outputs, a gradient step costs a forward pass, then the vjp (which recomputes the forward inside, as the rematerialising JAX path does):
-  one extra forward per step (INFERRED, about a quarter of a step). Moving the loss into MLX would remove it; that is the larger scope Ethan
-  declined for now.
-- **Weights.** A converter turns the haiku `.npz` parameters (with the triangle projections fused as upstream's `fuse=True` does) into MLX files,
-  bit for bit, with a manifest that accounts for every tensor, as in the earlier ports. AlphaFold parameters are read from the existing locations
-  (`~/.cache/bindcraft/alphafold` has the multimer v3 files, `~/.cache/colabfold/params` the pTM files; `BINDCRAFT_AF2_PARAMS` overrides).
+- **The call contract (mechanism refined while planning; same semantics).** The one call that runs AlphaFold inside the jitted loss, `recycled_alphafold_outputs`, becomes a
+  JAX `custom_vjp` whose forward and backward each call the MLX worker through `jax.pure_callback`. Forward: all recycles (no gradient) and the final pass, returning only the
+  outputs the loss reads. Backward: the worker recomputes the final pass and applies the vjp to JAX's cotangents, returning gradients for the two float features that depend on the
+  sequence (`msa_feat`, `target_feat`). JAX's own autodiff then yields forward, loss, backward with the front, the loss and the optimizer untouched, and the extra forward per step
+  the design already accepts. The worker may cache the recycle state from the forward by call id, and recomputes when the cache misses, so a miss costs time and never correctness.
+- **Weights.** Read straight from the existing `.npz` files at worker start (no separate converter; my call), with the triangle-projection fusing that
+  `get_model_haiku_params(fuse=True)` does, and an accounting check that every tensor is used exactly once. Locations: `~/.cache/bindcraft/alphafold` (multimer v3) and
+  `~/.cache/colabfold/params` (pTM); `BINDCRAFT_AF2_PARAMS` overrides.
 - **Numerics.** Mirror what JAX does: bf16 parameters and compute where the haiku context applies it, fp32 where the structure module casts
   explicitly, fp32 for softmaxes and norms exactly where the JAX code has them. Rematerialisation per block with `mx.checkpoint`, row chunking with
   the same `subbatch_size` rule. Dropout uses MLX's RNG (not bit-identical to JAX's; parity is checked with dropout off).
@@ -172,3 +173,5 @@ not already near the GPU's matmul ceiling).
 3. The Neural Engine is out of scope (Ethan's decision after Spike B showed the GPU faster on every op tested); the results are kept above as a record.
 4. The work lives on branch `mlx-backend` in `~/BindCraft2`, off `apple-silicon-metal`, committed locally, nothing pushed.
 5. The extra forward pass per gradient step is accepted as the price of keeping the loss in JAX.
+6. The seam is a `custom_vjp` over `pure_callback` and the switch is `BINDCRAFT_BACKEND=mlx`, not a settings key or a predictor that orchestrates the three phases itself.
+7. The Evoformer blocks are shared by both families (they live in `modules.py`), so they are ported once and the monomer family needs only its own embeddings, templates, structure module and heads.
