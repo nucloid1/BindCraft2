@@ -12,7 +12,7 @@ torch on MPS; none was measured against a JAX Metal path, so the gain here is a 
 
 ## Decided by Ethan
 
-- **Scope: the AlphaFold model only.** Its forward pass and its gradient run in MLX in a worker process. The design loop, the 907-line loss
+- **Scope: the AlphaFold model only.** Its forward pass and its gradient run in MLX in a worker process. The design loop, the 917-line loss
   module (`bindcraft/loss.py`), the sequence optimizer, ProteinMPNN and the filters stay as they are.
 - **MLX is a new backend added beside the existing ones.** CUDA, ROCm, oneAPI and metaljax keep working and are the parity reference.
 - **bf16, as today.** AlphaFold runs in bf16 now (`global_config.bfloat16 = True`); the MLX model mirrors it. fp32 is kept as an option for parity
@@ -26,6 +26,8 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
 `~/.cache/esmfold2_mlx/gpu.lock`); disk under 90% unless Ethan opts in (`..._MIN_FREE_GB`); never a silent fallback to another backend.
 
 ## What exists today (the facts the design rests on)
+
+**Base (2026-10-30).** `mlx-backend` was merged with upstream `b6fb3ae` (147 commits ahead of the old base `5342aef`) before any code was written; every anchor below is against that code. Upstream renamed `bigbang_initialization` to `large_complex_initialization` and added a memory ladder around the gradient compile (`subbatch_ladder`, `_widest_shard_that_fits`, `executable_fits`, `is_out_of_memory`, an attention fallback named `chunked`). `executable_fits` measures a compiled JAX executable that does not contain the MLX model and reads NVIDIA memory (on this Mac it sees no GPUs, budget 0, so everything fits), so under this backend memory fitting is the worker's job and the MLX subclass overrides `subbatch_ladder` to one rung. The seam itself, `recycled_alphafold_outputs`, is unchanged.
 
 - **Where AlphaFold is called (VERIFIED, `bindcraft/af2.py`).** `AlphaFoldDesignModel` implements `DifferentiableProteinPredictor`
   (`predict(...)` and `sequence_gradients(...)`, `bindcraft/prediction.py`) and is built in `bindcraft/campaign.py:262,265` for the design models and
@@ -104,10 +106,10 @@ Standing rules from earlier work: nothing in a repo this work does not own is mo
   `trajectory_only` or `validation_model: multimer` as the first end-to-end milestone; the monomer forward next, which makes the default run end to end.
   A family not yet implemented is refused by name. Whether validation runs with dropout off is read from `campaign.py` by the builder (not checked here).
 - **What the predictor must reproduce (VERIFIED in code).** (1) The JAX path casts predicted atom positions to float16 before the loss
-  (`af2.py:281,343`); that cast stays in the JAX tail. (2) The campaign sets `provides_distogram`, `num_recycle`, `target_flexibility` and
-  `bigbang_initialization` on the model after construction (`campaign.py:61-75`); each must change what the MLX path does, as the JAX path keys its compile
+  (in both closures, `_compiled_complex_prediction` and `_compiled_sequence_gradients`); that cast stays in the JAX tail. (2) The campaign sets `provides_distogram`, `num_recycle`, `target_flexibility` and
+  `large_complex_initialization` on the model after construction (the block in `campaign.py` that follows model construction); each must change what the MLX path does, as the JAX path keys its compile
   cache on them. (3) `sequence_gradients(..., compile_only=True)` is called from a daemon thread to precompile the next length bucket
-  (`campaign.py:101-110`); on MLX it must be a warm-up or queue behind the worker's other requests, never a concurrent second request.
+  (`compile_next_length_bucket` in `campaign.py`, which now also calls `predict(compile_only=True, compile_blocking=False)`); on MLX these calls must never reach the worker, which holds because `compile_only` returns before any execution.
 - **Failure behaviour.** A dead worker or a cap hit raises an error that names the cause and the cap, exits non-zero and leaves no shared memory behind;
   the run is never continued on another backend.
 - **Operations.** The shared GPU lock for the whole run, the preflight (disk, heavy processes), and a worker memory cap, as in the earlier ports.
