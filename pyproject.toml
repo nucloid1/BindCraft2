@@ -31,6 +31,14 @@ rocm = ["jax[rocm7-local]>=0.11,<0.12"]
 # cuEquivariance there, so attention and the triangle updates run as plain XLA, in a single worker.
 metal = ["jax>=0.11,<0.12", "metaljax>=0.11.9,<0.12"]
 docs = ["sphinx", "furo", "myst-parser", "sphinx-copybutton"]
+# The MLX AlphaFold backend (BINDCRAFT_BACKEND=mlx, Apple silicon): AlphaFold runs in an MLX worker process, and jax keeps the front, the loss and the optimizer on the cpu.
+mlx = ["mlx>=0.32,<0.33", "jax>=0.11,<0.12"]
+test = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+markers = ["integration: needs captured references or real weights (BINDCRAFT_MLX_INTEGRATION=1)", "gpu: runs on the GPU and holds the shared lock for the session"]
 
 [build-system]
 requires = ["setuptools"]

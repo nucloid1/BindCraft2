@@ -31,6 +31,10 @@ def select_apple_gpu() -> None:
     #than quietly folding on the processor. An explicit JAX_PLATFORMS (JAX_PLATFORMS=cpu included) wins.
     if 'JAX_PLATFORMS' in os.environ or 'JAX_PLATFORM_NAME' in os.environ:
         return
+    #the mlx backend runs AlphaFold in an MLX worker on the Apple GPU, so the parent's jax (front, loss, optimizer) takes the cpu; JAX_PLATFORMS=metal still overrides
+    if os.environ.get('BINDCRAFT_BACKEND') == 'mlx':
+        os.environ['JAX_PLATFORMS'] = 'cpu'
+        return
     try:
         if sys.platform == 'darwin' and platform.machine() == 'arm64' and importlib.util.find_spec('jax_plugins.metal') is not None:
             os.environ['JAX_PLATFORMS'] = 'metal'
