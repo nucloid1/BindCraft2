@@ -25,6 +25,7 @@ import atexit
 import collections
 import os
 import pickle
+import re
 import struct
 import subprocess
 import sys
@@ -262,9 +263,12 @@ class RemoteModel:
         return f'MLX worker died {when} (exit code {code}{cap}); see its stderr above'
 
     def worker_error(self, traceback_text: str) -> str:
-        #the cap note rides on every reported error when a cap is set, so a memory kill is told apart by its exit code -9 (see death), never by the note alone
+        #the cap note rides on every reported error when a cap is set, so a memory kill is told apart by its exit code -9 (see death), never by the note alone. The repo's retry ladder reruns whatever
+        #says "out of memory" or "resource exhausted" (af2.is_out_of_memory) with smaller shards and another attention; none of that exists for this worker, whose cap is the budget, so the phrases
+        #are hyphenated: the cause stays readable and no longer matches
+        text = re.sub(r'(?i)out[ _]of[ _]memory|resource[ _]exhausted', lambda match: re.sub(r'[ _]', '-', match.group(0)), traceback_text)
         cap = f'\n(worker memory cap: {self.cap_gib} GiB)' if self.cap_gib else ''
-        return f'MLX worker raised:\n{traceback_text}{cap}'
+        return f'MLX worker raised:\n{text}{cap}'
 
     def close(self) -> None:
         proc, self.proc = self.proc, None
