@@ -66,7 +66,7 @@ def test_worker_is_reused_across_calls(remote):
 @pytest.mark.integration
 def test_worker_never_imports_jax_or_torch(remote):
     remote.start()
-    assert remote.ready_info['jax_imported'] is False and remote.ready_info['torch_imported'] is False and remote.ready_info['device'] == 'cpu'
+    assert remote.ready_info['jax_imported'] is False and remote.ready_info['torch_imported'] is False and remote.ready_info['device'] == os.environ['BINDCRAFT_MLX_DEVICE']  #cpu, or gpu in an explicit GPU run (conftest sets it per test)
 
 @pytest.mark.integration
 def test_loading_a_model_without_weights_names_the_model(remote):

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(os.environ.get('BINDCRAFT_MLX_TEST_DEVICE') == 'gpu', reason='an explicit GPU run holds the session lock and exports its owner variable, which these clean-state lock tests must not inherit')
+
 from bindcraft.af.mlx_af2.gpu_lock import hold
 
 REPO = Path(__file__).resolve().parents[2]

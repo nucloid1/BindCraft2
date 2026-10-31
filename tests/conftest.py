@@ -7,11 +7,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'mlx_af2'))  #jax_units and the capture scripts
 
 INTEGRATION_ENV = 'BINDCRAFT_MLX_INTEGRATION'
+TEST_DEVICE_ENV = 'BINDCRAFT_MLX_TEST_DEVICE'  #=gpu runs every MLX test on the GPU under the shared lock (an accuracy run on the real device); unset, only gpu-marked tests do
+
+def everything_on_gpu() -> bool:
+    return os.environ.get(TEST_DEVICE_ENV) == 'gpu'
 
 def pytest_collection_modifyitems(config, items):
     if os.environ.get(INTEGRATION_ENV) == '1':
         for item in items:
-            if item.get_closest_marker('gpu'):
+            if item.get_closest_marker('gpu') or everything_on_gpu():
                 item.fixturenames.insert(0, 'gpu_session')
         return
     skip = pytest.mark.skip(reason=f'needs {INTEGRATION_ENV}=1 (captured references, real weights or the GPU)')
@@ -47,7 +51,7 @@ def params_dir():
 def mlx_device(request):
     #unit parity tests run MLX on the CPU so they never touch the GPU, which another run may hold; only gpu-marked tests, which hold the lock, get the GPU
     import mlx.core as mx
-    gpu = bool(request.node.get_closest_marker('gpu'))
+    gpu = bool(request.node.get_closest_marker('gpu')) or everything_on_gpu()
     mx.set_default_device(mx.gpu if gpu else mx.cpu)
     previous = os.environ.get('BINDCRAFT_MLX_DEVICE')
     os.environ['BINDCRAFT_MLX_DEVICE'] = 'gpu' if gpu else 'cpu'  #the MLX worker processes the tests start follow the same rule

@@ -2,7 +2,8 @@
 slower in a process where another framework has done work: the MLX half imports no JAX (the block's config comes from a short CPU subprocess), the JAX half is the repo's vendored haiku block jitted on whatever
 platform JAX is given (JAX_PLATFORMS=metal for metaljax; the second call in the process is the timed one, the first compiles). Both run under the shared GPU lock unless --device cpu (a smoke test, not a measurement).
 Inputs are the shapes of a real design (2 MSA rows, 256 and 128 channels), random activations of unit-ish scale, bfloat16 like the shipped model, layer 10 of model_1_multimer_v3.
-Usage: python scripts/mlx_af2/bench_block.py [--backend mlx|jax] [--lengths 150 250 400] [--dtype bf16|fp32] [--repeats 5] [--device gpu|cpu]"""
+--default-softmax (MLX half) runs MLX's default softmax instead of precise=True, to price that choice.
+Usage: python scripts/mlx_af2/bench_block.py [--backend mlx|jax] [--lengths 150 250 400] [--dtype bf16|fp32] [--repeats 5] [--device gpu|cpu] [--default-softmax]"""
 import argparse
 import json
 import os
@@ -38,10 +39,10 @@ def timed(function, repeats: int) -> float:
 
 def evoformer_config() -> dict:
     code = 'import json, jax_units; print(json.dumps(jax_units.configs()[0].to_dict()["embeddings_and_evoformer"]["evoformer"]))'
-    result = subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True, cwd=HERE, env={**os.environ, 'JAX_PLATFORMS': 'cpu', 'PYTHONPATH': f'{HERE}:{HERE.parents[1]}'}, check=True)
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=HERE, env={**os.environ, 'JAX_PLATFORMS': 'cpu', 'PYTHONPATH': f'{HERE}:{HERE.parents[1]}'}, check=True)
     return json.loads(result.stdout.strip().splitlines()[-1])
 
-def bench_mlx(lengths, dtype: str, repeats: int, device: str) -> list[dict]:
+def bench_mlx(lengths, dtype: str, repeats: int, device: str, default_softmax: bool = False) -> list[dict]:
     import contextlib
 
     import mlx.core as mx
@@ -51,6 +52,9 @@ def bench_mlx(lengths, dtype: str, repeats: int, device: str) -> list[dict]:
     from bindcraft.af.mlx_af2.weights import load_params
 
     preflight.check_disk()
+    if default_softmax:
+        precise_softmax = mx.softmax
+        mx.softmax = lambda x, axis=-1, **keywords: precise_softmax(x, axis=axis)
     cfg = evoformer_config()
     params_dir = os.path.expanduser(os.environ.get('BINDCRAFT_AF2_PARAMS') or '~/.cache/bindcraft/alphafold')
     rows = []
@@ -75,7 +79,7 @@ def bench_mlx(lengths, dtype: str, repeats: int, device: str) -> list[dict]:
             forward_s = timed(forward, repeats)
             mx.reset_peak_memory()
             both_s = timed(forward_backward, repeats)
-            rows.append({'backend': 'mlx', 'device': device, 'dtype': dtype, 'residues': length, 'forward_ms': round(1e3 * forward_s, 1), 'forward_backward_ms': round(1e3 * both_s, 1),
+            rows.append({'backend': 'mlx' + ('+default-softmax' if default_softmax else ''), 'device': device, 'dtype': dtype, 'residues': length, 'forward_ms': round(1e3 * forward_s, 1), 'forward_backward_ms': round(1e3 * both_s, 1),
                          'peak_gib': round(mx.get_peak_memory() / 2 ** 30, 2)})
             print(json.dumps(rows[-1]), flush=True)
             del msa, pair, msa_mask, pair_mask, msa_cotangent, pair_cotangent
@@ -137,9 +141,10 @@ def main(argv=None) -> list[dict]:
     parser.add_argument('--dtype', choices=('bf16', 'fp32'), default='bf16')
     parser.add_argument('--repeats', type=int, default=5)
     parser.add_argument('--device', choices=('gpu', 'cpu'), default='gpu', help='cpu is a smoke test; for the JAX half the platform comes from JAX_PLATFORMS')
+    parser.add_argument('--default-softmax', action='store_true')
     arguments = parser.parse_args(argv)
     if arguments.backend == 'mlx':
-        return bench_mlx(arguments.lengths, arguments.dtype, arguments.repeats, arguments.device)
+        return bench_mlx(arguments.lengths, arguments.dtype, arguments.repeats, arguments.device, arguments.default_softmax)
     return bench_jax(arguments.lengths, arguments.dtype, arguments.repeats, arguments.device)
 
 if __name__ == '__main__':
