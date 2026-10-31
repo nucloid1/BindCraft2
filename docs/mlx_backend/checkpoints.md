@@ -143,6 +143,24 @@ cancellation sits under bf16's own gradient noise (cosine 0.8 against fp32, see 
 Option, not taken: an exact variance in those two norms would make MLX gradients about 60x more accurate than the shipped fp32 ones, at the price of no longer reproducing the JAX formula (the parity gates would
 then need the exact-variance JAX module as their reference). It is Ethan's call; it changes numbers, not shapes or speed.
 
+## The monomer trunk, and an arbitrary value in the shipped templates (2026-10-31, fp32, MLX on the CPU device)
+
+The monomer (pTM) trunk (embeddings, the template pair stack and pointwise attention, the template torsion-angle rows, the extra-MSA stack, 48 blocks, the single activations) against the vendored
+`EmbeddingsAndEvoformer` run directly: single 2.7e-7, pair 9.1e-8, first MSA row 4.9e-7 at 48 blocks for `model_1_ptm` (templates on), and 4 / 12 / 24 / 48 blocks all at 1e-7; the template embedding alone
+2.6e-7 (the three mask configurations, with a control that the interchain mask changes the result when templates span chains); the torsion angles 6e-8 against the vendored function on the real template.
+
+Against the captured SEAM reference (the jitted model) the template models first showed 7.2e-3 on `single` and 1.4e-2 on the first MSA row (small, `model_1_ptm`), 3.8e-3 to 1.1e-2 on the other three
+combinations, while the template-free `model_3_ptm` matched at 1e-5. The cause, found by elimination (float64 run of the same graph: MLX within 3e-5 of it, so not MLX rounding; JAX's own sensitivity to a
+1e-7 input nudge 2e-7, so not chaos; vendored module run eagerly against the capture: the same 7e-3, so not the port; stock against chunked attention: bit-identical): ONE entry of 1029 in the template's
+torsion-angle features. The undefined pre-omega angle (mask 0) of the first target residue, which follows residues at zero positions, is a frame of three collinear points; the epsilon-regularised normalisation
+turns the rounding residue of the arithmetic into a unit vector. JAX eagerly gets (0, 0), and so does MLX; XLA's jit gets (0.7455, 0.6664) and that value is in the reference. Injecting the jitted rows
+into the MLX trunk brings all four model and case combinations to 2e-7 to 5e-7.
+
+So the shipped monomer models carry one rounding-dependent, undefined input per target chain start (platform- and fusion-dependent, so the Metal path may carry yet another value), worth 1e-3 to 1.4e-2
+relative in `single` and the MSA row, 1e-4 to 2e-4 in `pair`. MLX computes the deterministic value (zeros, like every fully masked residue) and the trunk test feeds it the reference's own jitted rows so the
+comparison covers everything else; a test pins that the only disagreement between MLX and jit is on undefined angles. Not done, and Ethan's call if wanted: zero every undefined angle in all backends, which
+would make the templates deterministic across platforms (it changes the shipped JAX numbers too).
+
 ## Checkpoint 1: one Evoformer block, forward and forward plus backward (speed)
 
 Taken 2026-10-31: see "Checkpoints 1 and 3 on the GPU" above.

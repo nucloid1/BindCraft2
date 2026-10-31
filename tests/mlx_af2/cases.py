@@ -35,7 +35,7 @@ def build_model(model_class=AlphaFoldDesignModel, case: str = 'small', models: t
     arguments.update(overrides)
     return model_class(**arguments)
 
-def front_arguments(case: str, state: str | None = None, seed: int = 0) -> dict:
+def front_arguments(case: str, state: str | None = None, seed: int = 0, monomer: bool = False) -> dict:
     #the concrete arrays sequence_gradients hands to the front (prepare_design_sequence_features, alphafold_input_features) for one state, built with the same helper calls
     design_settings, protein_states, multi_chain_binders, _ = design_inputs(case, seed)
     state = state or next(iter(protein_states))
@@ -48,14 +48,18 @@ def front_arguments(case: str, state: str | None = None, seed: int = 0) -> dict:
     _, shared_chains = collect_shared_chains(padded_states)
     arrays = concatenate_chain_arrays(state_chain_names, padded_states[canonical], 'atoms', 'atom_mask', 'flags', 'residue_index')
     flags = arrays['flags']
+    residue_index = arrays['residue_index']
+    if monomer and len(chain_lengths) > 1:  #the monomer models get the chains held apart in the numbering, as _predict_complex and the gradient path do
+        from bindcraft.af2 import monomer_chain_break_indices
+        residue_index = monomer_chain_break_indices(chain_lengths, residue_index)
     return {'sequence': jnp.concatenate([shared_chains[name].sequence for name in state_chain_names], axis=0), 'atoms': arrays['atoms'], 'atom_mask': arrays['atom_mask'], 'flags': flags,
-            'residue_index': arrays['residue_index'], 'asym_id': residue_chain_ids(chain_lengths), 'entity_id': residue_entity_ids(state_chain_names, chain_lengths, multi_chain_binders),
+            'residue_index': residue_index, 'asym_id': residue_chain_ids(chain_lengths), 'entity_id': residue_entity_ids(state_chain_names, chain_lengths, multi_chain_binders),
             'interface_asym_id': interface_asym_ids(state_chain_names, chain_lengths), 'seq_mask': real_residue_weights(flags)}
 
-def model_inputs(case: str = 'small', state: str | None = None, dropout: bool = False, large_complex_initialization: bool = False, extra_padding: int = 0) -> dict:
+def model_inputs(case: str = 'small', state: str | None = None, dropout: bool = False, large_complex_initialization: bool = False, extra_padding: int = 0, monomer: bool = False) -> dict:
     #the feature dict AlphaFold receives for one state, built eagerly with the repo's own front (no jit, so every value is a concrete array)
     from bindcraft.af2 import alphafold_input_features, prepare_design_sequence_features
-    a = front_arguments(case, state)
+    a = front_arguments(case, state, monomer=monomer)
     if extra_padding:  #dead residues at the end, padded as _predict_complex pads them: chain ids of a chain that does not exist, masks zero
         chains = int(a['asym_id'].max()) + 1
         pad = lambda array, value=0: jnp.pad(array, [(0, extra_padding)] + [(0, 0)] * (array.ndim - 1), constant_values=value)

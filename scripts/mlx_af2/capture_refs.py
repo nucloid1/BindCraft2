@@ -45,6 +45,8 @@ def flatten_floats(nested: dict, prefix: str = '') -> dict:
     for name, value in nested.items():
         if isinstance(value, dict):
             flat.update(flatten_floats(value, f'{prefix}{name}/'))
+        elif isinstance(value, tuple) and hasattr(value, '_fields'):  #the monomer model's r3.Vecs and r3.Rigids
+            flat.update(flatten_floats(value._asdict(), f'{prefix}{name}/'))
         elif jnp.issubdtype(value.dtype, jnp.floating):
             flat[f'{prefix}{name}'] = value
     return flat
@@ -53,10 +55,13 @@ def stored(array) -> np.ndarray:
     array = np.asarray(array)
     return array.astype(np.float32) if array.dtype.kind == 'f' else array  #npz cannot hold bfloat16; the original dtype goes in the metadata
 
-def capture_call(case: str, variant: str, num_recycle: int = 1, large_complex_initialization: bool = False, cotangent_seed: int = 0) -> tuple[dict, dict]:
-    model = cases.build_model(case=case)
-    name = cases.MULTIMER_MODEL
-    features = cases.model_inputs(case, dropout=False, large_complex_initialization=large_complex_initialization)
+MONOMER_MODELS = ('model_1_ptm', 'model_2_ptm', 'model_3_ptm')  #3 has no templates (CONFIG_DIFFS)
+
+def capture_call(case: str, variant: str, num_recycle: int = 1, large_complex_initialization: bool = False, cotangent_seed: int = 0, model_name: str | None = None, forward_only: bool = False) -> tuple[dict, dict]:
+    #model_name picks a monomer model (forward only: the MLX monomer path is for validation and has no vjp)
+    name = model_name or cases.MULTIMER_MODEL
+    model = cases.build_model(case=case, models=(name,))
+    features = cases.model_inputs(case, dropout=False, large_complex_initialization=large_complex_initialization, monomer='multimer' not in name)
     length = int(features['aatype'].shape[0])
     subbatch_size = resolve_subbatch_size(length, 'auto')
     runner = build_runner(name, variant == 'bf16', model.attention_backend, subbatch_size)
@@ -72,16 +77,20 @@ def capture_call(case: str, variant: str, num_recycle: int = 1, large_complex_in
         return flatten_floats(recycled_alphafold_outputs(runner, params, key, {**rest, 'msa_feat': msa_feat, 'target_feat': target_feat}, num_recycle))
 
     start = time.perf_counter()
-    outputs, pullback = jax.vjp(lambda m, t: forward(m, t, rest), features['msa_feat'], features['target_feat'])
-    rng = np.random.default_rng(cotangent_seed)
-    cotangents = {field: (jnp.asarray(rng.standard_normal(value.shape), dtype=value.dtype) if field in OUTPUT_KEYS and field not in NO_COTANGENT else jnp.zeros_like(value)) for field, value in outputs.items()}
-    gradient_msa, gradient_target = pullback(cotangents)
-    jax.block_until_ready((outputs, gradient_msa, gradient_target))
+    if forward_only:
+        outputs = jax.block_until_ready(forward(features['msa_feat'], features['target_feat'], rest))
+    else:
+        outputs, pullback = jax.vjp(lambda m, t: forward(m, t, rest), features['msa_feat'], features['target_feat'])
+        rng = np.random.default_rng(cotangent_seed)
+        cotangents = {field: (jnp.asarray(rng.standard_normal(value.shape), dtype=value.dtype) if field in OUTPUT_KEYS and field not in NO_COTANGENT else jnp.zeros_like(value)) for field, value in outputs.items()}
+        gradient_msa, gradient_target = pullback(cotangents)
+        jax.block_until_ready((outputs, gradient_msa, gradient_target))
     seconds = time.perf_counter() - start
     arrays = {f'in/{field}': stored(value) for field, value in features.items() if field != 'prev'}
     arrays.update({f'out/{field}': stored(value) for field, value in outputs.items()})
-    arrays.update({f'cot/{field}': stored(cotangents[field]) for field in OUTPUT_KEYS if field not in NO_COTANGENT})
-    arrays['grad/msa_feat'], arrays['grad/target_feat'] = stored(gradient_msa), stored(gradient_target)
+    if not forward_only:
+        arrays.update({f'cot/{field}': stored(cotangents[field]) for field in OUTPUT_KEYS if field not in NO_COTANGENT})
+        arrays['grad/msa_feat'], arrays['grad/target_feat'] = stored(gradient_msa), stored(gradient_target)
     meta = {'case': case, 'variant': variant, 'model_name': name, 'num_recycle': num_recycle, 'use_dropout': False, 'large_complex_initialization': large_complex_initialization, 'length': length,
             'subbatch_size': subbatch_size, 'out_dtypes': {field: str(outputs[field].dtype) for field in OUTPUT_KEYS}, 'key': np.asarray(key).tolist(), 'seconds': round(seconds, 1)}
     for field in ('out/' + k for k in OUTPUT_KEYS):
@@ -165,6 +174,17 @@ def main(argv=None) -> None:
             record_bf16_ensemble(root, case, strict)
             ensemble = json.loads((root / 'spread.json').read_text())[case]['bf16_ensemble_strict' if strict else 'bf16_ensemble']['errors']
             print(f'{case}: bf16 vs fp32 over the {"strict-rounding " if strict else ""}ensemble: ' + ', '.join(f'{name.split("/")[-2]}/{name.split("/")[-1]} {min(values):.3g}..{max(values):.3g}' for name, values in ensemble.items() if max(values) > 0), flush=True)
+        return
+    if '--monomer' in argv:  #forward-only references of the monomer models, one folder per variant and model: <case>/<variant>__<model>/call0.npz
+        for case in names:
+            for model_name in MONOMER_MODELS:
+                for variant in ('fp32', 'bf16'):
+                    arrays, meta = capture_call(case, variant, model_name=model_name, forward_only=True)
+                    save(root, case, f'{variant}__{model_name}', 0, arrays, meta)
+                    print(f'{case}/{variant}__{model_name}: {meta["length"]} residues, {meta["seconds"]} s, {len(arrays)} arrays', flush=True)
+                    if variant == 'fp32':  #call1: no recycle, so the previous state is zeros and the trunk can be judged before the structure module exists
+                        arrays, meta = capture_call(case, variant, num_recycle=0, model_name=model_name, forward_only=True)
+                        save(root, case, f'{variant}__{model_name}', 1, arrays, meta)
         return
     if '--noise-floor' in argv:
         for case in names:

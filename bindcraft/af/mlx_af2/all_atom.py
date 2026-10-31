@@ -126,3 +126,49 @@ def compute_chi_angles(positions: mx.array, mask: mx.array, aatype: mx.array) ->
     a, b, c, d = (atoms[..., index] for index in range(4))
     present = mx.prod(mx.take_along_axis(mask, atom_indices, axis=1).reshape(residues, 4, 4), axis=-1)
     return geometry.dihedral_angle(a, b, c, d), rows_for(CHI_ANGLES_MASK, aatype, 'chi_angles_mask') * present.astype(mx.float32)
+
+CHI_PI_PERIODIC = np.array(residue_constants.chi_pi_periodic, dtype=np.float32)
+
+def robust_normalize(vectors: mx.array) -> mx.array:
+    #r3.vecs_robust_normalize: the epsilon sits inside the square root, so a zero vector stays zero
+    return vectors / mx.sqrt(mx.sum(mx.square(vectors), axis=-1, keepdims=True) + 1e-8)
+
+def atom37_to_torsion_angles(aatype: mx.array, positions: mx.array, mask: mx.array, placeholder_for_undefined: bool = False) -> dict[str, mx.array]:
+    #the monomer models' all_atom.atom37_to_torsion_angles for [templates, residues] aatype, [templates, residues, 37, 3] positions and [templates, residues, 37] mask: the 7 torsion angles
+    #[pre_omega, phi, psi, chi_1 to chi_4] as (sin, cos), the same shifted by pi where the chi's atom naming is ambiguous, and which angles exist. Unlike the multimer path (chi angles only), the angles
+    #the mask says are missing are NOT zeroed here (they come out of the degenerate frames) unless placeholder_for_undefined asks for the (1, 0) placeholder
+    aatype = mx.minimum(aatype, 20)
+    templates, residues = aatype.shape
+    previous_positions = mx.concatenate([mx.zeros((templates, 1, 37, 3)), positions[:, :-1]], axis=1)
+    previous_mask = mx.concatenate([mx.zeros((templates, 1, 37)), mask[:, :-1]], axis=1)
+    pre_omega_positions = mx.concatenate([previous_positions[:, :, 1:3], positions[:, :, 0:2]], axis=-2)  #previous CA, C and this N, CA
+    phi_positions = mx.concatenate([previous_positions[:, :, 2:3], positions[:, :, 0:3]], axis=-2)  #previous C and this N, CA, C
+    psi_positions = mx.concatenate([positions[:, :, 0:3], positions[:, :, 4:5]], axis=-2)  #this N, CA, C and O
+    pre_omega_mask = mx.prod(previous_mask[:, :, 1:3], axis=-1) * mx.prod(mask[:, :, 0:2], axis=-1)
+    phi_mask = previous_mask[:, :, 2] * mx.prod(mask[:, :, 0:3], axis=-1)
+    psi_mask = mx.prod(mask[:, :, 0:3], axis=-1) * mask[:, :, 4]
+    atom_indices = rows_for(CHI_ATOM_INDICES, aatype, 'chi_atom_indices').reshape(templates, residues, 16)
+    chi_positions = mx.take_along_axis(positions, mx.broadcast_to(atom_indices[..., None], (templates, residues, 16, 3)), axis=2).reshape(templates, residues, 4, 4, 3)
+    chi_atoms_present = mx.prod(mx.take_along_axis(mask, atom_indices, axis=2).reshape(templates, residues, 4, 4), axis=-1)
+    chi_mask = rows_for(CHI_ANGLES_MASK, aatype, 'chi_angles_mask') * chi_atoms_present.astype(mx.float32)
+    torsion_positions = mx.concatenate([pre_omega_positions[:, :, None], phi_positions[:, :, None], psi_positions[:, :, None], chi_positions], axis=2)  #[T, N, 7, 4, 3]
+    torsion_mask = mx.concatenate([pre_omega_mask[..., None], phi_mask[..., None], psi_mask[..., None], chi_mask], axis=2)
+    #a frame from the first three atoms (origin the third, the second on the negative x axis, the first in the xy plane) and the fourth atom in it: its y and z are cos and sin of the angle
+    point_on_xy_plane, point_on_neg_x, origin, fourth = (torsion_positions[:, :, :, index] for index in range(4))  #atoms 0, 1, 2 and 3 of each torsion
+    e0 = robust_normalize(origin - point_on_neg_x)
+    in_plane = point_on_xy_plane - origin
+    e1 = robust_normalize(in_plane - mx.sum(in_plane * e0, axis=-1, keepdims=True) * e0)
+    e2 = mx.stack([e0[..., 1] * e1[..., 2] - e0[..., 2] * e1[..., 1], e0[..., 2] * e1[..., 0] - e0[..., 0] * e1[..., 2], e0[..., 0] * e1[..., 1] - e0[..., 1] * e1[..., 0]], axis=-1)
+    relative_y = mx.sum(e1 * fourth, axis=-1) - mx.sum(e1 * origin, axis=-1)
+    relative_z = mx.sum(e2 * fourth, axis=-1) - mx.sum(e2 * origin, axis=-1)
+    sin_cos = mx.stack([relative_z, relative_y], axis=-1)
+    sin_cos = sin_cos / mx.sqrt(mx.sum(mx.square(sin_cos), axis=-1, keepdims=True) + 1e-8)
+    sin_cos = sin_cos * mx.array([1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0])[None, None, :, None]  #psi was computed from the oxygen
+    ambiguous = rows_for(CHI_PI_PERIODIC, aatype, 'chi_pi_periodic')
+    mirror = mx.concatenate([mx.ones((templates, residues, 3)), 1.0 - 2.0 * ambiguous], axis=-1)
+    alt_sin_cos = sin_cos * mirror[..., None]
+    if placeholder_for_undefined:
+        placeholder = mx.stack([mx.ones(sin_cos.shape[:-1]), mx.zeros(sin_cos.shape[:-1])], axis=-1)
+        sin_cos = sin_cos * torsion_mask[..., None] + placeholder * (1 - torsion_mask[..., None])
+        alt_sin_cos = alt_sin_cos * torsion_mask[..., None] + placeholder * (1 - torsion_mask[..., None])
+    return {'torsion_angles_sin_cos': sin_cos, 'alt_torsion_angles_sin_cos': alt_sin_cos, 'torsion_angles_mask': torsion_mask}
