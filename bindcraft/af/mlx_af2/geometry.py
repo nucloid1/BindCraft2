@@ -157,3 +157,10 @@ class Rigid3:
 def make_transform_from_reference(a_xyz: Vec3, b_xyz: Vec3, c_xyz: Vec3) -> Rigid3:
     #all_atom_multimer.make_transform_from_reference: the frame of the three backbone atoms N, CA, C (a, b, c)
     return Rigid3(Rot3.from_two_vectors(c_xyz - b_xyz, a_xyz - b_xyz), b_xyz)
+
+def dihedral_angle(a: Vec3, b: Vec3, c: Vec3, d: Vec3) -> mx.array:
+    #the torsion angle of four points, in radians (vector.dihedral_angle)
+    v1, v2, v3 = a - b, b - c, d - c
+    c1, c2 = v1.cross(v2), v3.cross(v2)
+    c3 = c2.cross(c1)
+    return mx.arctan2(c3.dot(v2), v2.norm() * c1.dot(c2))

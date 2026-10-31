@@ -61,6 +61,7 @@ RESTYPE_ATOM37_TO_ATOM14 = _make_restype_atom37_to_atom14()
 RESTYPE_ATOM37_MASK = _make_restype_atom37_mask()
 RESTYPE_ATOM14_MASK = _make_restype_atom14_mask()
 RESTYPE_RIGIDGROUP_BASE_ATOM37_IDX = _make_restype_rigidgroup_base_atom37_idx()
+CHI_ANGLES_MASK = np.array(list(residue_constants.chi_angles_mask) + [[0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
 _cache: dict = {}
 
 def rows_for(table: np.ndarray, aatype: mx.array, name: str | None = None) -> mx.array:
@@ -111,3 +112,17 @@ def frames_and_literature_positions_to_atom14_pos(aatype: mx.array, all_frames_t
     atoms_to_global = all_frames_to_global.map(lambda component: mx.sum(component[:, None, :] * group_mask, axis=-1))
     literature = geometry.Vec3.from_array(rows_for(residue_constants.restype_atom14_rigid_group_positions, aatype, 'literature_positions'))
     return atoms_to_global.apply_to_point(literature).scale(rows_for(residue_constants.restype_atom14_mask, aatype, 'residue_atom14_mask'))
+
+def make_backbone_affine(positions: geometry.Vec3, mask: mx.array, aatype: mx.array) -> tuple[geometry.Rigid3, mx.array]:
+    #the frame of N, CA, C of every residue, and the mask that all three are present
+    a, b, c = (residue_constants.atom_order[name] for name in ('N', 'CA', 'C'))
+    return geometry.make_transform_from_reference(positions[:, a], positions[:, b], positions[:, c]), (mask[:, a] * mask[:, b] * mask[:, c]).astype(mx.float32)
+
+def compute_chi_angles(positions: mx.array, mask: mx.array, aatype: mx.array) -> tuple[mx.array, mx.array]:
+    #the four chi angles of every residue from [N, 37, 3] positions and the mask of chi angles whose atoms are all present
+    residues = aatype.shape[0]
+    atom_indices = rows_for(CHI_ATOM_INDICES, aatype, 'chi_atom_indices').reshape(residues, 16)
+    atoms = geometry.Vec3.from_array(positions).map(lambda component: mx.take_along_axis(component, atom_indices, axis=1).reshape(residues, 4, 4))
+    a, b, c, d = (atoms[..., index] for index in range(4))
+    present = mx.prod(mx.take_along_axis(mask, atom_indices, axis=1).reshape(residues, 4, 4), axis=-1)
+    return geometry.dihedral_angle(a, b, c, d), rows_for(CHI_ANGLES_MASK, aatype, 'chi_angles_mask') * present.astype(mx.float32)

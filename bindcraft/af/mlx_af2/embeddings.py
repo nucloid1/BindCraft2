@@ -39,14 +39,22 @@ def relative_features(features: dict, cfg: dict, dtype) -> mx.array:
 def relative_encoding(p, features: dict, cfg: dict, dtype) -> mx.array:
     return layers.linear(p.scope('~_relative_encoding/position_activations'), relative_features(features, cfg, dtype))  #haiku scopes a non-transparent method under its own name
 
-def recycle_distogram(aatype: mx.array, prev_pos: mx.array, prev_pos_cfg: dict, dtype) -> mx.array:
-    #modules.dgram_from_positions of the previous pass's pseudo beta atoms (the alpha carbon for glycine)
-    is_glycine = (aatype == residue_constants.restype_order['G'])[..., None]
-    beta = mx.where(is_glycine, prev_pos[..., residue_constants.atom_order['CA'], :], prev_pos[..., residue_constants.atom_order['CB'], :])
-    lower = mx.square(mx.linspace(prev_pos_cfg['min_bin'], prev_pos_cfg['max_bin'], prev_pos_cfg['num_bins']))
+def pseudo_beta(aatype: mx.array, positions: mx.array, mask: mx.array | None = None):
+    #modules.pseudo_beta_fn: the beta carbon (the alpha carbon for glycine), and its mask when a mask is given
+    ca, cb = residue_constants.atom_order['CA'], residue_constants.atom_order['CB']
+    is_glycine = aatype == residue_constants.restype_order['G']
+    beta = mx.where(is_glycine[..., None], positions[..., ca, :], positions[..., cb, :])
+    return beta if mask is None else (beta, mx.where(is_glycine, mask[..., ca], mask[..., cb]).astype(mx.float32))
+
+def dgram_from_positions(positions: mx.array, num_bins: int, min_bin: float, max_bin: float) -> mx.array:
+    #modules.dgram_from_positions: one-hot squared distances between every pair, the last bin catching everything beyond max_bin
+    lower = mx.square(mx.linspace(min_bin, max_bin, num_bins))
     upper = mx.concatenate([lower[1:], mx.array([1e8], dtype=mx.float32)])
-    squared = mx.sum(mx.square(beta[:, None] - beta[None, :]), axis=-1, keepdims=True)
-    return ((squared > lower).astype(mx.float32) * (squared < upper).astype(mx.float32)).astype(dtype)
+    squared = mx.sum(mx.square(positions[:, None] - positions[None, :]), axis=-1, keepdims=True)
+    return (squared > lower).astype(mx.float32) * (squared < upper).astype(mx.float32)
+
+def recycle_distogram(aatype: mx.array, prev_pos: mx.array, prev_pos_cfg: dict, dtype) -> mx.array:
+    return dgram_from_positions(pseudo_beta(aatype, prev_pos), prev_pos_cfg['num_bins'], prev_pos_cfg['min_bin'], prev_pos_cfg['max_bin']).astype(dtype)
 
 def extra_msa_features(features: dict, num_extra_msa: int) -> tuple[mx.array, mx.array]:
     extra_msa, deletion = features['extra_msa'][:num_extra_msa], features['extra_deletion_value'][:num_extra_msa]
