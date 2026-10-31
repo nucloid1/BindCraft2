@@ -1,18 +1,18 @@
-![BC2 — protein binder design](docs/bc2_header.png)
+![BC2 — protein binder design](docs/.assets/bc2_header.png)
 
-# BC2
+# BindCraft2
 
 **Design protein binders around the biology of your experiment.**
 
 > **Apple silicon (Metal) fork.** Unofficial fork of [PacesaLab/BindCraft2](https://github.com/PacesaLab/BindCraft2), modified from upstream to run on Apple GPUs. On an arm64 Mac, `bash install.sh` installs the [metaljax](https://github.com/eterevsky/metaljax) JAX plugin and `bindcraft` runs AlphaFold 2 on the Metal GPU; CUDA, ROCm and oneAPI paths are unchanged.
 > On an M3 Max (48 GB), against the same code on the CPU: a 196-residue forward pass takes ~5 s vs ~21 s, and a six-step design trajectory ~32 s vs ~110 s (~3.5x), with float32 results matching the CPU (0.002 Å CA RMSD, identical pLDDT, pTM and PAE).
-> Experimental: checked on one machine and on single trajectories only, with no comparison against CUDA. Based on upstream commit `5342aef` (PR #3); upstream has moved on since. See [Apple silicon](docs/installation.md#apple-silicon-experimental).
+> Experimental: checked on one machine and on single trajectories only, with no comparison against CUDA. Based on upstream commit `b6fb3ae` (2026-10-20). See [Apple silicon](docs/source/installation.md#apple-silicon-experimental).
 
-BC2 brings de novo miniproteins, scaffolded binders, cyclic peptides and multistate design into one workflow. Describe your target, choose the kind of binder you want, and add properties that matter for your experiment. Named presets supply the design settings and acceptance filters; you can adjust individual settings when needed.
+BindCraft2 (BC2) brings de novo miniproteins, scaffolded binders, cyclic peptides and multistate design into one workflow. Describe your target, choose the kind of binder you want, and add properties that matter for your experiment. Named presets supply the design settings and acceptance filters; you can adjust individual settings when needed.
 
-BC2 combines sequence optimisation through AlphaFold 2 with ProteinMPNN redesign, then evaluates candidates with separate AlphaFold models and structural filters. It returns sequences, predicted complexes and ranked results, with measurements of the interface, fold and molecular properties to help choose candidates for testing. These are computational designs: binding, selectivity and the requested biological behaviour require experimental validation.
+BC2 combines sequence optimisation through [AlphaFold 2](https://www.nature.com/articles/s41586-021-03819-2) with [ProteinMPNN](https://www.science.org/doi/10.1126/science.add2187) redesign, then evaluates candidates with separate AlphaFold models and structural filters. It returns sequences, predicted complexes and ranked results, with measurements of the interface, fold and molecular properties to help choose candidates for testing. These are computational designs: binding, selectivity and the requested biological behaviour require experimental validation.
 
-[Installation](#installation) · [First design](#run-your-first-design) · [Your target](#design-against-your-own-target) · [Input tiers](#how-the-input-tiers-work) · [Modalities](#design-modalities) · [Properties](#additional-design-properties) · [Results](#read-your-results) · [Design guide](docs/design-guide.md) · [Settings](docs/reference.md) · [Outputs](docs/outputs.md) · [Installing and running](docs/installation.md)
+[Installation](#installation) · [First design](#run-your-first-design) · [Your target](#design-against-your-own-target) · [Input tiers](#how-the-input-tiers-work) · [Modalities](#design-modalities) · [Properties](#additional-design-properties) · [Results](#read-your-results) · [Design guide](docs/source/design-guide.md) · [Settings](docs/source/reference.md) · [Outputs](docs/source/outputs.md) · [Installing and running](docs/source/installation.md)
 
 ## Installation
 
@@ -25,9 +25,9 @@ bash install.sh
 source .venv/bin/activate
 ```
 
-On an Apple silicon Mac, clone this fork instead (`git clone https://github.com/nucloid1/BindCraft2.git`); the same commands then install the experimental Metal backend. See [Apple silicon](docs/installation.md#apple-silicon-experimental).
+On an Apple silicon Mac, clone this fork instead (`git clone https://github.com/nucloid1/BindCraft2.git`); the same commands then install the experimental Metal backend. See [Apple silicon](docs/source/installation.md#apple-silicon-experimental).
 
-In a new terminal, return to `BC2` and run `source .venv/bin/activate` again. See the [installation and running guide](docs/installation.md) for existing environments, older GPUs, clusters, containers and troubleshooting.
+In a new terminal, return to `BindCraft2` and run `source .venv/bin/activate` again. See the [installation and running guide](docs/source/installation.md) for existing environments, older GPUs, clusters, containers and troubleshooting.
 
 ## Run your first design
 
@@ -69,11 +69,11 @@ Change `target.pdb` and `A` to match your structure, then choose your binder len
 
 - **Length:** `[80, 80]` requests exactly 80 residues; `[60, 100]` allows any length in that range. For a scaffolded format such as `VHH`, remove `binder_lengths` and change `modality`; the scaffold determines the length.
 - **Binding site:** add `"hotspots": "54,56,66-70"` inside the target entry, using residue numbers from your structure.
-- **Output:** `project_folder` names the results folder. Launching this example from `BC2` writes to `BC2/results/my_target/`. Give each experiment its own folder.
+- **Output:** `project_folder` names the results folder. Launching this example from `BindCraft2` writes to `BindCraft2/results/my_target/`. Give each experiment its own folder.
 
 For a shipped target, replace the `targets` entry with `"target": "hPDL1"`. List the available targets with `bindcraft design --list-targets`.
 
-BC2 accepts PDB, mmCIF and FASTA inputs. See [target and scaffold settings](docs/reference.md#define-the-target-and-binder) for chain selections, custom scaffolds and sequence targets.
+BC2 accepts PDB, mmCIF and FASTA inputs. See [target and scaffold settings](docs/source/reference.md#define-the-target-and-binder) for chain selections, custom scaffolds and sequence targets.
 
 ## How the input tiers work
 
@@ -106,7 +106,7 @@ Edit the JSON file for a persistent choice, or use the command line for a one-of
 | `"humanize": true` | `--humanize` |
 | `"termini_accessible": true` | `--termini-accessible` |
 
-Use the exact names shown here, including capitals and underscores. `bindcraft design --help` lists the available targets, modalities and property flags. Start from [pdl1.json](examples/pdl1.json) when choosing presets; the other [example campaigns](examples/README.md) contain more specific settings that still take precedence when you add a preset. See [input tiers and overrides](docs/reference.md#input-tiers-and-overrides) for details.
+Use the exact names shown here, including capitals and underscores. `bindcraft design --help` lists the available targets, modalities and property flags. Start from [pdl1.json](examples/pdl1.json) when choosing presets; the other [example campaigns](examples/README.md) contain more specific settings that still take precedence when you add a preset. See [input tiers and overrides](docs/source/reference.md#input-tiers-and-overrides) for details.
 
 ## Design modalities
 
@@ -127,7 +127,7 @@ Choose a binder format, then add compatible targeting or conformational options.
 | **scFv variable domains** | [scFv](settings/modality/scFv.json) | Paired antibody variable domains. BC2 models two chains; the connecting linker must be designed separately. |
 | **Fab** | [Fab](settings/modality/Fab.json) | An antibody-binding fragment with heavy and light chains, including their constant domains. |
 
-The antibody and ARP presets use supplied [scaffolds](scaffolds/). See [scaffold editing](docs/reference.md#define-the-target-and-binder) to use your own.
+The antibody and ARP presets use supplied [scaffolds](scaffolds/). See [scaffold editing](docs/source/reference.md#define-the-target-and-binder) to use your own.
 
 ### Target recognition
 
@@ -141,7 +141,7 @@ Most targeting choices are made in the `targets` entries of your JSON file:
 | **Bind a peptide or disordered target** | Point `target_path` to a FASTA file. Choose the binder format separately. | [Dynorphin A](examples/dynorphin_idr.json) |
 | **Bind a receptor assembly** | Select its chains with `"chains": "A,B"`; use chain-prefixed hotspots such as `"A54,B12-16"`. | [IL-2 receptor](examples/il2_receptor.json) |
 
-For a **focused epitope**, add [--forced-targeting](settings/property/forced_targeting.json) and name `hotspots` on a structured target. See [targeting options](docs/reference.md#targeting-options) for the method and acceptance criteria.
+For a **focused epitope**, add [--forced-targeting](settings/property/forced_targeting.json) and name `hotspots` on a structured target. See [targeting options](docs/source/reference.md#targeting-options) for the method and acceptance criteria.
 
 ### Conformational design
 
@@ -150,7 +150,7 @@ For a **focused epitope**, add [--forced-targeting](settings/property/forced_tar
 | **Interface movement on binding** | [induced_fit](settings/modality/induced_fit.json) | A binder whose binding surface changes shape between the free and bound states. |
 | **Whole-fold change on binding** | [fold_switch](settings/modality/fold_switch.json) | A binder intended to adopt different folds when free and bound. |
 
-These presets each use **one target**. Combine one with a compatible binder format, for example `--modality binder,induced_fit`. [Conformational design details](docs/reference.md#conformational-design) cover the structural criteria and designs with explicit groups of conformations.
+These presets each use **one target**. Combine one with a compatible binder format, for example `--modality binder,induced_fit`. [Conformational design details](docs/source/reference.md#conformational-design) cover the structural criteria and designs with explicit groups of conformations.
 
 ### Additional design properties
 
@@ -159,14 +159,14 @@ Add a compatible property as a command-line flag or a top-level JSON entry:
 | Property | Command-line flag | JSON entry |
 | --- | --- | --- |
 | **Focused epitope** — concentrate binding on named hotspots | `--forced-targeting` | `"forced_targeting": true` |
-| **Humanization** — favour human-like sequence features | `--humanize` | `"humanize": true` |
+| **Humanization** — favour human-like, lower immunogenicity, sequence features (*in development*) | `--humanize` | `"humanize": true` |
 | **Protease resistance** — reduce predicted cleavage susceptibility | `--protease-stable` | `"protease_stable": true` |
 | **Disulfide staple** — include a predicted disulfide bond | `--disulfide-staple` | `"disulfide_staple": true` |
 | **Mixed topology** — select for beta-sheet content and limit helicity | `--mixed-topology` | `"mixed_topology": true` |
 | **Nearby termini** — bring the N and C termini together | `--termini-together` | `"termini_together": true` |
 | **Accessible termini** — direct both chain ends away from the target | `--termini-accessible` | `"termini_accessible": true` |
-| **Initial guess** — re-predict each candidate from the pose the trajectory folded | `--initial-guess` | `"initial_guess": true` |
-| **Big bang** — seed the gradient stages too, so a binder folded from nothing starts at the origin | `--bigbang` | `"bigbang": true` |
+| **Hard target** — re-predict each candidate from the pose the trajectory folded | `--hard-target` | `"hard_target": true` |
+| **Large complex** — seed the gradient stages too, so a binder folded from nothing starts at the origin | `--large-complex` | `"large_complex": true` |
 
 For example:
 
@@ -174,13 +174,13 @@ For example:
 bindcraft design examples/pdl1.json --mixed-topology --set 'project_folder=results/pdl1_mixed'
 ```
 
-These properties are judged using computational proxies. See [property objectives and acceptance filters](docs/reference.md#property-objectives-and-acceptance-filters) for what each one measures and requires, and [starting conformations](docs/reference.md#starting-conformations) for the optional `--initial-guess` and `--bigbang` flags.
+These properties are judged using computational proxies. See [property objectives and acceptance filters](docs/source/reference.md#property-objectives-and-acceptance-filters) for what each one measures and requires, and [starting conformations](docs/source/reference.md#starting-conformations) for the optional `--hard-target` and `--large-complex` flags.
 
 ### Combining modalities
 
-![Compatibility of binder design modalities: supported combinations in green, unsupported combinations in red](docs/modality_compatibility.png)
+![Compatibility of binder design modalities: supported combinations in green, unsupported combinations in red](docs/.assets/modality_compatibility.png)
 
-The chart shows compatible pairs of biological design objectives. The named `fold_switch` preset still requires one target; see [conformational design](docs/reference.md#conformational-design). BC2 checks declared incompatibilities before starting a campaign.
+The chart shows compatible pairs of biological design objectives. The named `fold_switch` preset still requires one target; see [conformational design](docs/source/reference.md#conformational-design). BC2 checks declared incompatibilities before starting a campaign.
 
 ## Continue a campaign
 
@@ -190,7 +190,7 @@ A campaign resumes by default: run it again against the same folder and it carri
 bindcraft design examples/pdl1.json
 ```
 
-Repeat any additional flags used to start that run. Add `--set 'resume=false'` to refuse a non-empty folder instead. See [campaign records](docs/reference.md#resolved-settings-and-reproducibility) for reproducibility and optional author or project metadata.
+Repeat any additional flags used to start that run. Add `--set 'resume=false'` to refuse a non-empty folder instead. See [campaign records](docs/source/reference.md#resolved-settings-and-reproducibility) for reproducibility and optional author or project metadata.
 
 ## Read your results
 
@@ -222,9 +222,9 @@ bindcraft rank results/pdl1 --on i_pTM
 bindcraft filter results/pdl1
 ```
 
-The filter command reports which criteria rejected candidates. See [ranking and refiltering](docs/outputs.md#ranking-and-refiltering) for choosing new thresholds and saving a revised shortlist without running design again.
+The filter command reports which criteria rejected candidates. See [ranking and refiltering](docs/source/outputs.md#ranking-and-refiltering) for choosing new thresholds and saving a revised shortlist without running design again.
 
-Confidence scores are not binding affinities. For cropped targets, inspect the binder against the full structure; for cell-surface targets, consider glycans, membrane orientation and access by other proteins. The [output and measurement reference](docs/outputs.md) explains every file and every measurement.
+Confidence scores are not binding affinities. For cropped targets, inspect the binder against the full structure; for cell-surface targets, consider glycans, membrane orientation and access by other proteins. The [output and measurement reference](docs/source/outputs.md) explains every file and every measurement.
 
 ## Running on a cluster
 
@@ -234,11 +234,11 @@ Submit from the repository root:
 sbatch bindcraft.slurm examples/pdl1.json
 ```
 
-Add your site's account and partition options if required. See [Slurm and other schedulers](docs/installation.md#slurm-and-other-schedulers) for resource requests, containers and offline nodes.
+Add your site's account and partition options if required. See [Slurm and other schedulers](docs/source/installation.md#slurm-and-other-schedulers) for resource requests, containers and offline nodes.
 
 ## Reference
 
-[Settings, losses and filters](docs/reference.md) · [Outputs and measurements](docs/outputs.md) · [Installing and running](docs/installation.md) · [Example catalogue](examples/README.md) · [Container recipes](containers/README.md)
+[Settings, losses and filters](docs/source/reference.md) · [Outputs and measurements](docs/source/outputs.md) · [Installing and running](docs/source/installation.md) · [Example catalogue](examples/README.md) · [Container recipes](containers/README.md)
 
 Presets live in [settings/](settings/) and scaffolds in [scaffolds/](scaffolds/). For code navigation, [settings.py](bindcraft/settings.py) resolves the input tiers, [cli.py](bindcraft/cli.py) reads the flags, [loss.py](bindcraft/loss.py) defines design objectives, and [filters.py](bindcraft/filters.py) defines acceptance measurements.
 
@@ -249,5 +249,5 @@ BC2 builds on a great deal of prior work, and we are grateful to the people and 
 - **[AlphaFold 2](https://github.com/google-deepmind/alphafold)** (DeepMind) — BC2 uses AlphaFold 2 code and models for both sequence optimisation and validation.
 - **[ColabDesign](https://github.com/sokrypton/ColabDesign)** (Sergey Ovchinnikov) — the design engine is based on ColabDesign's hallucination and design framework.
 - **[ProteinMPNN](https://github.com/dauparas/ProteinMPNN)** (Justas Dauparas) — used for sequence redesign.
-- **HyperMPNN** — the "positive" design weights are taken from the MeilerLab GitHub repository.
+- **[HyperMPNN](https://github.com/meilerlab/HyperMPNN)** — the "positive" design weights are taken from the MeilerLab GitHub repository.
 - Special thanks to **Lennart Nickel** (Correia group).

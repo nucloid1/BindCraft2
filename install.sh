@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install BC2 and everything it designs with: bash install.sh, then bindcraft design settings.json.
-# The accelerator is read off the driver; pass cuda13, cuda12, rocm, oneapi or metal to name it instead,
+# The accelerator is read off the driver; pass cuda13, cuda12, rocm or metal to name it instead,
 # and --no-weights to skip the one-time AlphaFold parameter download. On Apple silicon the accelerator is
 # metal (experimental, through the metaljax plugin) and needs no argument.
 set -euo pipefail
@@ -14,9 +14,9 @@ fetch_weights=1
 for argument in "$@"; do
   case "$argument" in
     --no-weights) fetch_weights=0 ;;
-    cuda13|cuda12|rocm|oneapi|metal) accelerator="$argument" ;;
+    cuda13|cuda12|rocm|metal) accelerator="$argument" ;;
     cpu) echo "bindcraft: there is no CPU installation. A trajectory folds an AlphaFold ensemble hundreds of times, which is days of processor for an hour of card, so install where there is a GPU." >&2; exit 2 ;;
-    *) echo "usage: bash install.sh [cuda13|cuda12|rocm|oneapi|metal] [--no-weights]" >&2; exit 2 ;;
+    *) echo "usage: bash install.sh [cuda13|cuda12|rocm|metal] [--no-weights]" >&2; exit 2 ;;
   esac
 done
 
@@ -33,9 +33,12 @@ fi
 
 if [[ -z $accelerator ]]; then
   # nvidia-smi reports the newest CUDA its driver serves, which is what the jax wheels are built for.
+  # Its banner labels that "CUDA Version" on older drivers and "CUDA UMD Version" on newer ones, so
+  # both spellings are matched: missing the label reads as no driver at all, and a machine holding a
+  # working card is then told its GPU is presumed to belong to its job.
   # A machine with no driver at all has no nvidia-smi, and under pipefail that is a failed pipeline
   # rather than an empty answer, so every reading of it ends in a truth this script can act on.
-  cuda_major=$(nvidia-smi 2>/dev/null | sed -n 's/.*CUDA Version: *\([0-9][0-9]*\).*/\1/p' | head -1 || true)
+  cuda_major=$(nvidia-smi 2>/dev/null | sed -n 's/.*CUDA[A-Z ]*Version: *\([0-9][0-9]*\).*/\1/p' | head -1 || true)
   case "${cuda_major:-none}" in
     13|14) accelerator=cuda13 ;;
     12) accelerator=cuda12 ;;

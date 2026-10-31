@@ -2,6 +2,7 @@ import ast
 import functools
 import importlib.util
 import os
+import warnings
 import pkgutil
 import platform
 import sys
@@ -11,6 +12,10 @@ def append_xla_flags(flags: str) -> None:
 
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 os.environ.setdefault('XLA_PYTHON_CLIENT_PREALLOCATE', 'false')
+if os.environ.get('BINDCRAFT_WORKER_CPUS') and hasattr(os, 'sched_setaffinity'):
+    os.sched_setaffinity(0, {int(cpu) for cpu in os.environ['BINDCRAFT_WORKER_CPUS'].split(',') if cpu.strip()})
+if os.path.exists('/usr/lib/wsl/lib/libcuda.so.1'):
+    os.environ.setdefault('XLA_PYTHON_CLIENT_ALLOCATOR', 'cuda_async')
 OPERATOR_COMPILATION_CACHE = os.environ.get('JAX_COMPILATION_CACHE_DIR')
 os.environ.setdefault('JAX_COMPILATION_CACHE_DIR', os.path.join(os.environ.get('TMPDIR') or '/tmp', 'bindcraft_xla_cache'))
 os.environ.setdefault('JAX_PERSISTENT_CACHE_ENABLE_XLA_CACHES', 'none')
@@ -18,6 +23,7 @@ if 'triton_gemm' not in os.environ.get('XLA_FLAGS', ''):
     append_xla_flags('--xla_gpu_enable_triton_gemm=false')
 if os.environ.get('BC2_XLA_EXTRA', '').strip():
     append_xla_flags(os.environ['BC2_XLA_EXTRA'].strip())
+warnings.filterwarnings('ignore', message=r"Error reading persistent compilation cache entry for 'jit_(_where|dot_product_attention)", category=UserWarning)
 
 def select_apple_gpu() -> None:
     #On Apple silicon with the metaljax plugin installed (the "metal" extra), run JAX on the Apple GPU. The

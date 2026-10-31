@@ -1,0 +1,143 @@
+# Choosing a modality
+
+[Design Overview](../design-guide.md) · [Reference Documentation](../reference.md) · [Outputs and Measurements](../outputs.md)
+
+The **modality** sets the binder format and the conformational objective. Name it with `"modality":
+"..."` (or `--modality`). You can combine some, e.g. `["VHH", "induced_fit"]`.
+
+| Modality | What it makes | Choose it when | Typical applications |
+| --- | --- | --- | --- |
+| `binder` | A de novo miniprotein, ~60–180 residues, folded from nothing | The default and most reliable. General de novo binder against a structured epitope. | The general-purpose choice: research reagents and pulldowns, biosensors, crystallisation/cryo-EM fiducials, therapeutic-lead and targeting domains. Most reliable to fold and bind. |
+| `large_binder` | A longer de novo binder (~250–600 residues) with extended optimisation | Chiefly to add **mass to a small target for cryo-EM / structural biology**; also for large or flat epitopes that need more interface. **Name `binder_lengths`** (see `large_complex` in [Desperation and autotuning](05-desperation-and-autotuning.md) for large complexes). | Primarily a **structural-biology tool**: a rigid binder adds **mass and recognisable features to a small target for cryo-EM** (and can act as a crystallisation chaperone), making an otherwise too-small particle tractable. Secondarily, big or flat epitopes that need more buried area, higher-avidity single chains, and longer fusion/scaffolding domains. |
+| `peptide` | A 12–25 residue linear peptide, judged bound without a free fold | A short linear peptide into a **groove or pocket** — not a flat surface (see intuition below). | Inhibitors that thread a **groove or cleft** (protein–protein interfaces with a linear hotspot, active-site channels), tool compounds and targeting peptides. Poor on flat surfaces. |
+| `cyclic_peptide` | A 7–20 residue head-to-tail cyclic peptide | Cyclic peptide binders; the ring pre-pays part of the binding entropy. Read `Cyclic_Closure_Distance`. | Macrocycle-style binders wanting protease resistance and rigidity; the ring's lower entropy makes it a better peptide binder than a linear one of the same length. |
+| `homo_oligomer` | Identical copies of one 40–120 residue chain (lengths are per copy) | A symmetric homo-oligomeric binder — and the natural choice for a **symmetric target** (e.g. homotrimeric TNFα) a single-chain binder struggles with. Set `copies`. | Symmetric, multivalent binders — avidity, receptor **clustering/agonism**, and self-assembling building blocks. Especially good for **symmetric targets** that a monomeric binder handles poorly (e.g. homotrimeric **TNFα**): a matched Cₙ oligomer can engage every protomer of the symmetric target at once. |
+| `multidomain` | Two domains on one 120–300 residue chain | A two-domain binder with separation/linker objectives. | Single-chain **biparatopic/bispecific** reach across two epitopes (or two targets), and larger, higher-avidity architectures. |
+| `VHH` | Single-domain antibody scaffold, editable CDRs; samples extended and folded-back CDR3 | Single-domain antibody (VHH) format (see conformation note below). | Single-domain antibodies for **concave/cryptic epitopes and enzyme active sites**, intrabodies, crystallisation chaperones, imaging, and modular fusion building blocks. |
+| `scFv` | Heavy + light variable domains as two chains, no linker designed | scFv-format binders. | Variable-fragment format for **CAR-T binding domains** and bispecific/multispecific building blocks — when the downstream construct needs an scFv specifically. Least stable of the antibody formats. |
+| `Fab` | Heavy + light chains, editable variable domains, constant body kept off the target | Fab-format binders. | The classic therapeutic/diagnostic antibody fragment: more stable and manufacturable than an scFv, and the base the scFv here is derived from. |
+| `ARP` | Ankyrin Repeat protein — a consensus ankyrin-repeat scaffold with editable repeat positions | Ankyrin-repeat (ARP) binders. | Ankyrin Repeat protein — non-antibody, disulfide-free, high-stability scaffold: cheap microbial production, intracellular use, and easy multivalent fusions. |
+| `induced_fit` | The interface is optimised toward a 5 Å shift free vs bound and accepted above 2 Å | The binder should change shape on binding. | Binders for targets that **change shape on binding** (conformational selection), and allosteric or state-selective binders. |
+| `fold_switch` | The fold differs free vs bound: TM-score ≤ 0.85 **and** ≥ 1 Å of movement | You explicitly want a fold-switching binder. | Conditional/switchable binders and sensors, where the binder is meant to adopt a different fold free vs bound. |
+
+## Combining modalities
+
+A modality is either a **binder format** — `binder`, `large_binder`, `peptide`, `cyclic_peptide`,
+`homo_oligomer`, `multidomain`, `VHH`, `scFv`, `Fab`, `ARP` — or a **conformational objective**,
+`induced_fit` or `fold_switch`. A campaign takes one format and, optionally, one objective.
+
+**You can write them in either order.** Formats are always applied before objectives, and `binder`
+is supplied when you name no format at all. So `["fold_switch", "binder"]` and
+`["binder", "fold_switch"]` resolve identically, and an objective can never overwrite the format
+it is qualifying.
+
+> This was not true before 1.0.4. The order was taken literally, and naming a format *after*
+> `induced_fit` or `fold_switch` put the `Binder_RMSD` gate back at 3.5 Å — the gate those
+> objectives switch off, because it measures the very displacement they exist to create. Every
+> design that met the objective was then rejected by the filter, and the campaign finished with
+> nothing accepted and no error. Both orders are now the correct one.
+
+### Not every pair is supported
+
+These combinations are refused when the campaign starts, rather than silently producing something
+you did not ask for:
+
+| | cannot combine with |
+| --- | --- |
+| fold conditioning (`VHH`, `scFv`, `Fab`, `ARP`) | `cyclic_peptide`, `homo_oligomer`, `fold_switch`, mixed topology |
+| `homo_oligomer` | `multidomain` |
+| `induced_fit` | multitargeting, detargeting |
+| `peptide` | `cyclic_peptide`, `large_binder`, `multidomain` |
+| `cyclic_peptide` | `large_binder`, `multidomain` |
+| disordered (sequence) target | focused epitope, coldspot avoidance |
+
+Two scaffolds together — `["ARP", "VHH"]` — are refused for the same reason: each brings its own
+framework and a campaign designs one binder.
+
+A framework fixes the fold, which is why fold conditioning cannot also switch fold, close into a
+macrocycle or be told to change its secondary structure. `induced_fit` freezes one bound structure
+to compare a free state against, so it designs against exactly one target.
+
+### When two formats share a setting
+
+Order never decides the outcome. Where two named formats set the same thing, the one **higher up**
+this list wins, whichever way round you wrote them:
+
+1. **framework** — `ARP`, `Fab`, `scFv`, `VHH` — the scaffold fixes the chain it is built on
+2. **chain kind** — `peptide`, `cyclic_peptide`, `large_binder` — sets its own size
+3. **assembly** — `homo_oligomer`, `multidomain` — says how many copies or domains, not how long
+4. **`binder`** — the fallback, which yields to anything else named
+
+So `["homo_oligomer", "peptide"]` designs 12–25 residues per copy, because the chain kind owns the
+length and the assembly owns the count. `["VHH", "large_binder"]` keeps the VHH framework's
+`min_monomer_plddt_final` of 0.7. And naming `binder` alongside anything else changes nothing,
+because `binder` always yields.
+
+One setting is exempt: `multidomain` owns `weights_binder_contacts`, which it sets to zero on
+purpose — domains pulled together are not separate domains. `["large_binder", "multidomain"]`
+therefore takes `large_binder`'s lengths and weights but `multidomain`'s contact weight.
+
+## How to choose — biophysical intuition
+
+- **Not sure? Use `binder`.** De novo miniproteins are the most reliable modality: AlphaFold predicts
+  idealised secondary structure well, and a de novo binder can shape a paratope complementary to
+  almost any epitope.
+- **Match the binder shape to the epitope shape.**
+  - *Flat, featureless interfaces* are hard for anything small. A short peptide binds a flat surface
+    poorly: a linear chain pays a large conformational-**entropy** penalty on binding, and a flat
+    surface offers too little buried area and too few pockets to pay it back. Use a larger de novo
+    `binder`/`large_binder` that can lay a complementary face across the surface.
+  - *Grooves, clefts, pockets and cryptic/concave sites* suit extended elements — a `peptide`
+    threading a groove, or a `VHH` reaching in with an extended CDR3. This is exactly where VHHs
+    excel and flatter binders struggle.
+- **Cyclic beats linear for peptides.** `cyclic_peptide` constrains the backbone, pre-paying part of
+  the entropy cost, so it typically binds better than a linear peptide of similar length.
+- **Antibody-format modalities (`VHH`, `scFv`, `Fab`) usually perform worse than de novo modalities.**
+  AlphaFold leans on co-evolutionary (MSA) signal, and engineered/immune scaffolds carry weak
+  co-evolutionary information for their hypervariable loops, so the paratope is predicted less
+  reliably. Expect lower success rates and use these only when you need that *format*, not the best
+  binder. And **not every target is VHH-addressable** — a flat epitope with no cleft for the CDR3 is a
+  poor VHH target.
+- **`induced_fit`/`fold_switch` are objectives, not formats.** They build on the de novo `binder` base
+  and *require* the fold to move on binding. Use them only when that change is the goal; for a rigid
+  binder they just make the task harder.
+
+## Default scaffolds — where they come from
+
+The scaffold modalities edit a fixed backbone instead of folding from nothing. Each ships a canonical
+framework in `scaffolds/`, with the **framework held fixed and only the binding loops/repeat positions editable** (`mutate_positions` marks which, and `min_scaffold_sequence_retained_final` keeps the
+framework sequence intact so the output is a real, expressible member of that format).
+
+The three antibody-format scaffolds are built on **human germline** frameworks, chosen deliberately so
+the framework carries no IP: the germline is retained and only the CDRs are designed.
+
+| Modality | Scaffold file | Framework (human germline unless noted) |
+| --- | --- | --- |
+| `Fab` | `scaffolds/Fab.cif` | VH **IGHV3-23\*01** (IMGT M99660) + VL **IGKV1-39\*01** (IMGT X59315). VH3 is the most stable heavy family and Vκ1 the preferred light family, so VH3-23/Vκ1-39 is the safe, well-behaved pairing. Variable domains editable; the constant body is kept off the target. |
+| `scFv` | `scaffolds/scFv.cif` | The **same IGHV3-23\*01 + IGKV1-39\*01** framework as the Fab, as its VH (1–119) and VL (1–107). BC2 models the **two variable domains as separate chains with no linker** — it designs the domains; you add the VH–VL linker yourself when you build the construct. |
+| `VHH` | `scaffolds/VHH.cif` | A **human IGHV3-23\*01** autonomous single-domain (VHH-format) VH (IMGT M99660; FR4 from IGHJ4\*01), CDRs editable, both CDR3 conformations sampled (see below). It uses the human-germline **GLEW** FR2, not the camelid ERE hallmark. |
+| `ARP` (Ankyrin Repeat protein) | `scaffolds/ARP.cif` | A full-consensus designed ankyrin-repeat protein — the repeat framework held fixed with the variable repeat positions opened. A synthetic consensus scaffold, not an antibody germline. |
+
+> **Naming and IP.** BC2 deliberately builds on non-proprietary frameworks: the antibody scaffolds use
+> human germline sequences (IGHV3-23, IGKV1-39, IGHJ4, with the VHH on the human-germline GLEW
+> framework), and the ARP is a long-established full-consensus ankyrin-repeat fold. Supply your own
+> scaffold if you need a specific framework; a custom antibody CIF must be **sequentially renumbered**
+> (the engine rejects Kabat insertion codes).
+
+## VHH: extended vs folded-back paratope
+
+A VHH's long CDR3 can sit in two very different poses, and BC2 samples both by default
+(`"paratope_conformations": ["extended", "folded_back"]`):
+
+- **`extended`** — CDR3 projects away from the framework as a convex "finger" that reaches into
+  **concave epitopes**: enzyme active sites, clefts, pockets, cryptic sites. The classic VHH
+  advantage. In this pose the former VH/VL interface (the FR2 hallmark patch, normally buried against
+  a light chain) is left solvent-exposed, so BC2 **mutates those exposed framework residues to soluble
+  (hydrophilic) versions** — the aromatics are downweighted and the interface patch redesigned — to
+  keep the single domain soluble and non-sticky on its own.
+- **`folded_back`** — CDR3 folds back over the framework, presenting a **flatter, more compact
+  paratope** for **flatter or convex epitopes**, where an extended loop would find nothing to grip.
+
+Leave both on to let the campaign find which fits your epitope; restrict to one
+(`"paratope_conformations": ["extended"]`) when you already know the geometry and want the whole
+budget spent on it.
