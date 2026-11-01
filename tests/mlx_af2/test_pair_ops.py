@@ -93,4 +93,5 @@ def test_masked_positions_do_not_leak(params, operation):
     p, cfg = params.scope(f'{EVO}/{operation}').layer(2), evoformer_config(operation).to_dict()
     first = np.asarray(op(p, mx.array(act), mx.array(mask), cfg))[:valid, :valid]
     second = np.asarray(op(p, mx.array(other), mx.array(mask), cfg))[:valid, :valid]
-    assert_live(first) and rel_err(second, first) < 1e-6
+    assert_live(first)
+    assert rel_err(second, first) < 1e-6

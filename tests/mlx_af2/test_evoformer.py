@@ -52,7 +52,8 @@ def reference_stack(is_extra, scope, name, num_block, msa, pair, msa_mask, pair_
 def test_iteration_matches_a_single_block(params, layer):
     msa, pair, msa_mask, pair_mask = block_inputs(256, layer)
     want = reference_block(False, MAIN, 'evoformer_iteration', layer, msa, pair, msa_mask, pair_mask)
-    assert_live(want['msa']) and assert_live(want['pair'])
+    assert_live(want['msa'])
+    assert_live(want['pair'])
     got_msa, got_pair = evoformer.evoformer_iteration(params.scope(MAIN).layer(layer), mx.array(msa), mx.array(pair), mx.array(msa_mask), mx.array(pair_mask), evoformer_config().to_dict())
     assert rel_err(np.asarray(got_msa), want['msa']) < 1e-5 and rel_err(np.asarray(got_pair), want['pair']) < 1e-5
 
@@ -68,7 +69,8 @@ def test_extra_msa_iteration_matches_a_single_block(params, layer):
 def test_stack_of_48_matches(params):
     msa, pair, msa_mask, pair_mask = block_inputs(256, 20)
     want = reference_stack(False, MAIN, 'evoformer_iteration', 48, msa, pair, msa_mask, pair_mask)
-    assert_live(want['msa']) and assert_live(want['pair'])
+    assert_live(want['msa'])
+    assert_live(want['pair'])
     got_msa, got_pair = evoformer.evoformer_stack(params.scope(MAIN), mx.array(msa), mx.array(pair), mx.array(msa_mask), mx.array(pair_mask), evoformer_config().to_dict(), num_block=48)
     assert rel_err(np.asarray(got_msa), want['msa']) < 1e-3 and rel_err(np.asarray(got_pair), want['pair']) < 1e-3
 
@@ -97,7 +99,8 @@ def test_remat_gradient_equals_plain_gradient(params):
     plain = mx.grad(lambda m, p: loss(m, p, False), argnums=(0, 1))(msa, pair)
     remat = mx.grad(lambda m, p: loss(m, p, True), argnums=(0, 1))(msa, pair)
     for got, want in zip(remat, plain):
-        assert_live(np.asarray(want)) and rel_err(np.asarray(got), np.asarray(want)) < 1e-5
+        assert_live(np.asarray(want))
+        assert rel_err(np.asarray(got), np.asarray(want)) < 1e-5
 
 def test_dropout_residual_is_shared_along_the_broadcast_axis_and_keeps_the_expected_fraction():
     update = mx.ones((64, 64, 128))

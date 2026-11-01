@@ -112,4 +112,5 @@ def test_masked_columns_do_not_leak(params, operation):
         p = params.scope(f'{EXTRA}/msa_column_global_attention').layer(1)
         run = lambda a, q: msa_ops.msa_column_global_attention(p, mx.array(a), mx.array(mask), cfg)
     first, second = np.asarray(run(act, pair))[:, :valid], np.asarray(run(other, pair_other))[:, :valid]
-    assert_live(first) and rel_err(second, first) < 1e-6
+    assert_live(first)
+    assert rel_err(second, first) < 1e-6
