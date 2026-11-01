@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import platform
 import sys
@@ -20,4 +21,6 @@ def resolve_backend() -> str:
         raise ValueError(f'BINDCRAFT_BACKEND={backend!r} names no backend; use one of {", ".join(BACKENDS)}')
     if backend == 'mlx' and not apple_silicon():
         raise ValueError('the mlx backend runs AlphaFold on the Apple GPU and needs an Apple silicon Mac; leave BINDCRAFT_BACKEND unset (jax) elsewhere')
+    if backend == 'mlx' and importlib.util.find_spec('mlx') is None:
+        raise ValueError("BINDCRAFT_BACKEND=mlx needs the mlx package, which is not installed; install it with: pip install 'bindcraft[mlx]'")
     return backend

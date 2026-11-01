@@ -41,3 +41,17 @@ def test_jax_backend_leaves_platform_logic_alone():
     import importlib.util
     on_metal = sys.platform == 'darwin' and os.uname().machine == 'arm64' and importlib.util.find_spec('jax_plugins.metal') is not None
     assert platform_after_import() == ('metal' if on_metal else '')
+
+def test_mlx_backend_without_mlx_names_the_extra(monkeypatch):
+    #selecting the backend on a machine that never installed mlx fails here, with the install command, not later inside the worker process
+    monkeypatch.setenv('BINDCRAFT_BACKEND', 'mlx')
+    monkeypatch.setattr(backend, 'apple_silicon', lambda: True)
+    monkeypatch.setattr(backend.importlib.util, 'find_spec', lambda name: None if name == 'mlx' else object())
+    with pytest.raises(ValueError, match=r"mlx.*not installed.*bindcraft\[mlx\]"):
+        resolve_backend()
+
+def test_mlx_backend_with_mlx_installed_resolves(monkeypatch):
+    monkeypatch.setenv('BINDCRAFT_BACKEND', 'mlx')
+    monkeypatch.setattr(backend, 'apple_silicon', lambda: True)
+    monkeypatch.setattr(backend.importlib.util, 'find_spec', lambda name: object())
+    assert resolve_backend() == 'mlx'

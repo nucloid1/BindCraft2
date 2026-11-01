@@ -1,0 +1,10 @@
+{"backend": "mlx", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 3.337, "worker_peak_gib": 2.5}
+{"backend": "mlx", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 11.026, "worker_peak_gib": 3.69}
+{"backend": "mlx", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 0.772, "worker_peak_gib": 0.98}
+{"backend": "mlx", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 3.78, "worker_peak_gib": 2.64}
+{"backend": "mlx", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 7.704, "worker_peak_gib": 3.24}
+{"backend": "jax:metal", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 5.734, "peak_rss_gib": 4.11}
+{"backend": "jax:metal", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 23.73, "peak_rss_gib": 4.75}
+{"backend": "jax:metal", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 1.224, "peak_rss_gib": 4.08}
+{"backend": "jax:metal", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 7.027, "peak_rss_gib": 4.74}
+{"backend": "jax:metal", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 13.151, "peak_rss_gib": 5.19}

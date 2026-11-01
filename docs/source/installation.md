@@ -80,6 +80,19 @@ Python 3.12 or newer is needed, as elsewhere. On a Mac the installer does not lo
 - **Weights.** Point `BINDCRAFT_AF2_PARAMS` at AlphaFold parameters you already have to skip the 5.3 GB download; ProteinMPNN weights ship with the package.
 - **No compile cache.** The persistent compiled-graph cache stays empty with the plugin, so nothing is reused between runs and each process compiles again (about 10 s for the first prediction of a 196-residue complex).
 
+### The MLX backend (experimental, opt-in)
+
+AlphaFold can instead run through [MLX](https://github.com/ml-explore/mlx), in a worker process of its own, with the front, the loss, ProteinMPNN, the filters and the optimizer unchanged on the CPU. It is off unless you ask:
+
+```bash
+pip install 'bindcraft[mlx]'
+BINDCRAFT_BACKEND=mlx bindcraft design examples/pdl1_denovo.json
+```
+
+Design runs the multimer models, validation the multimer or the pTM monomer models (forward only). On the one machine checked (an M3 Max, bfloat16, warm) it was 1.28x faster per gradient round of a real trajectory than the
+metaljax path, 1.6x to 2.2x faster for a forward pass and 1.4x to 1.75x for a forward plus gradient, with the same distributions of design outcomes over five seeds, not more than that. The guide in
+[`docs/mlx_backend/README.md`](../mlx_backend/README.md) has the measured table, the memory cap, the GPU lock, what happens when the worker dies, and the limits.
+
 What was checked on an M3 Max, against the same code on the CPU: a forward pass of a 196-residue complex in float32 matches to 0.002 A CA RMSD with identical pLDDT, pTM and PAE; the gradient of the design loss in float32 has cosine 0.9997 on identical inputs (0.99 one step later); the linear algebra BC2 differentiates through (SVD, determinant, `eigh`, QR, inverse) matches to about 1e-6. A forward pass takes about 5 s against about 21 s on the CPU, and a six-step trajectory about 32 s against about 110 s. A bounded run through trajectory, ProteinMPNN redesign and validation completed and wrote finite records. Not checked: acceptance rates against CUDA, long campaigns, or larger complexes.
 
 ## Check the installation

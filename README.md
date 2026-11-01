@@ -7,6 +7,8 @@
 > **Apple silicon (Metal) fork.** Unofficial fork of [PacesaLab/BindCraft2](https://github.com/PacesaLab/BindCraft2), modified from upstream to run on Apple GPUs. On an arm64 Mac, `bash install.sh` installs the [metaljax](https://github.com/eterevsky/metaljax) JAX plugin and `bindcraft` runs AlphaFold 2 on the Metal GPU; CUDA, ROCm and oneAPI paths are unchanged.
 > On an M3 Max (48 GB), against the same code on the CPU: a 196-residue forward pass takes ~5 s vs ~21 s, and a six-step design trajectory ~32 s vs ~110 s (~3.5x), with float32 results matching the CPU (0.002 Å CA RMSD, identical pLDDT, pTM and PAE).
 > Experimental: checked on one machine and on single trajectories only, with no comparison against CUDA. Based on upstream commit `b6fb3ae` (2026-10-20). See [Apple silicon](docs/source/installation.md#apple-silicon-experimental).
+>
+> **MLX backend (opt-in).** `BINDCRAFT_BACKEND=mlx` (`pip install 'bindcraft[mlx]'`) runs AlphaFold through MLX in a worker process instead of metaljax, the rest of the pipeline unchanged; on the same M3 Max a real trajectory's gradient round was 1.28x faster (a forward pass 1.6x to 2.2x). See [the MLX backend guide](docs/mlx_backend/README.md).
 
 BindCraft2 (BC2) brings de novo miniproteins, scaffolded binders, cyclic peptides and multistate design into one workflow. Describe your target, choose the kind of binder you want, and add properties that matter for your experiment. Named presets supply the design settings and acceptance filters; you can adjust individual settings when needed.
 
