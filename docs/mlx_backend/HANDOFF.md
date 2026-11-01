@@ -16,7 +16,7 @@ decision taken on the way.
 - **Design** (AlphaFold-Multimer, forward and gradient) and **validation** (multimer or pTM monomer, forward only) run through MLX on the Apple GPU; fp32 agrees with the vendored JAX modules to 1e-7..1e-5 per stage and with the captured seam
   references of the real model (single trajectory inputs, outputs, cotangents and gradients) to 1e-3 or better on live residues; the gradient cosine against `jax.vjp` is 0.9999 or better, with one documented exception (a chaotic fp32 state, `checkpoints.md`).
 - **Real campaigns run end to end** on the backend (design stages, ProteinMPNN, validation, filters), including `hard_target` and the desperation ladder; a killed worker stops the run nonzero with the cause named; with `BINDCRAFT_BACKEND` unset the JAX path is untouched and no MLX module is imported.
-- **Against metaljax** (M3 Max, bf16, warm): 1.28x per gradient round of real trajectories, 1.6x to 2.2x per forward, 1.4x to 1.75x per design step; outcome distributions over five seeds overlap (`e2e.md`). The CPU-side JAX work is about 0.2% of a gradient round: the plan's phase-2 trigger (port it if above 20%) is not met.
+- **Against metaljax** (M3 Max, bf16, warm): 1.28x per gradient round of real trajectories, 1.6x to 2.2x per forward, 1.3x to 1.5x per design step; outcome distributions over five seeds overlap (`e2e.md`). The CPU-side JAX work is about 0.2% of a gradient round: the plan's phase-2 trigger (port it if above 20%) is not met.
 - Verification: (filled in after the final run: see the ledger's Task 21 line)
 
 ## What is NOT established
@@ -41,11 +41,9 @@ the Neural Engine dropped after a measured spike (the GPU was 1.5x to 2.8x faste
 the disk rule (below 90% before a real-model run) is never loosened by default, and on 2026-10-31 he said "its fine, don't worry about memory" about the 95-97% disk, so runs used the explicit opt-in `BINDCRAFT_MLX_MIN_FREE_GB=20`; and he said "drop it"
 about the preflight's rule that refused to start while another process held more than 8 GB (removed). Standing: never modify `~/RFD4-Proteina`; one GPU run at a time through the shared lock.
 
-## TODO (noted at his request): investigate speed headroom
+## Speed headroom: investigated 2026-11-01, nothing built
 
-A single Evoformer block only ties metaljax at 150 and 250 residues, so the end-to-end gain comes from elsewhere and there is probably more to take. In the order the numbers suggest: (1) a per-stage profile of the 400-residue vjp (35.2 s measured against about 20 s
-predicted from the blocks; it fits at 250 residues); (2) `mx.compile` on the Evoformer block; (3) `mx.fast.scaled_dot_product_attention` for the triangle and MSA attentions (the parity gates are the safety net); (4) where the end-to-end gain at 250 residues comes from if not the
-blocks; (5) a lighter remat. Details in `checkpoints.md`. Not worth revisiting: the Neural Engine, softmax precision.
+The investigation Ethan asked for is in `checkpoints.md` ("Speed headroom: what the investigation found"). Short version: the end-to-end gain comes from metaljax's cost for the same blocks inside the whole-model graph (60 to 80% more than its ops alone), not from MLX's ops, which tie or trail; the 400-residue vjp anomaly and the 1.75x design-step ratio were measurement artifacts (corrected to 1.26x at 250 and 1.53x at 400 residues). The two things worth building, together, are compiled per-block vjp closures in an explicit reverse loop (block forward + backward -22% to -26%, forward -26% to -32%, gradients identical in the probe) and keeping the design forward call's block inputs so the vjp does not repeat the final pass (22 to 27% of the vjp); projected, not measured, about 2.0x and 2.8x against metaljax instead of 1.26x and 1.53x. Decision for Ethan: build them or not. Probes: `scripts/mlx_af2/experiments/`.
 
 ## How to run things
 

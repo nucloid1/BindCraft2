@@ -1,0 +1,6 @@
+{"residues": 250, "variant": "base", "forward_ms": 30.87, "forward_backward_ms": 85.21, "grad_max_rel_diff_vs_base": null}
+{"residues": 250, "variant": "compiled", "forward_ms": 22.71, "forward_backward_ms": 84.89, "grad_max_rel_diff_vs_base": null}
+{"residues": 250, "variant": "vjp-compiled", "forward_ms": null, "forward_backward_ms": 66.61, "grad_max_rel_diff_vs_base": [0.0, 0.0]}
+{"residues": 400, "variant": "base", "forward_ms": 100.73, "forward_backward_ms": 274.22, "grad_max_rel_diff_vs_base": null}
+{"residues": 400, "variant": "compiled", "forward_ms": 68.15, "forward_backward_ms": 273.78, "grad_max_rel_diff_vs_base": null}
+{"residues": 400, "variant": "vjp-compiled", "forward_ms": null, "forward_backward_ms": 204.16, "grad_max_rel_diff_vs_base": [0.0, 0.0]}

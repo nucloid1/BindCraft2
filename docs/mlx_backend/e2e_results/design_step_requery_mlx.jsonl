@@ -1,0 +1,6 @@
+=== worker bench_grad 400, run 1  00:30:32
+{"backend": "mlx", "device": "gpu", "dtype": "bf16", "residues": 400, "forward_s": 11.246, "vjp_s": 24.061, "step_s": 35.306, "worker_peak_gib": {"mlx": 11.86, "rss": 0.96}, "vjp_cache_hits": 4}
+=== worker bench_grad 400, run 2  00:33:08
+{"backend": "mlx", "device": "gpu", "dtype": "bf16", "residues": 400, "forward_s": 11.179, "vjp_s": 24.132, "step_s": 35.311, "worker_peak_gib": {"mlx": 12.11, "rss": 0.98}, "vjp_cache_hits": 4}
+done 00:35:44
+{"backend": "mlx", "device": "gpu", "dtype": "bf16", "residues": 250, "forward_s": 3.382, "vjp_s": 6.495, "step_s": 9.878, "worker_peak_gib": {"mlx": 5.04, "rss": 0.81}, "vjp_cache_hits": 4}

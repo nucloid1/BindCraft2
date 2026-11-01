@@ -47,7 +47,7 @@ Evoformer block rematerialised, which is the one extra forward per step. A desig
 | one Evoformer block, forward | 150 / 250 / 400 | 10.0 / 31.1 / 100.8 ms | 12.2 / 31.6 / 96.9 ms | 1.22 / 1.02 / 0.96 | |
 | one block, forward + backward | 150 / 250 / 400 | 27.4 / 85.9 / 278.5 ms | 27.1 / 81.9 / 497.5 ms | 0.99 / 0.95 / 1.79 | 1.11 / 2.51 / 7.25 GiB |
 | multimer forward, 1 recycle | 250 / 400 | 3.34 / 11.03 s | 5.73 / 23.73 s | 1.72 / 2.15 | 2.50 / 3.69 GiB (worker) |
-| design step: forward + vjp | 250 / 400 | 9.9 / 47.3 s | 13.5 / 83.0 s | 1.37 / 1.75 | 5.73 / 11.95 GiB (worker) |
+| design step: forward + vjp | 250 / 400 | 9.9 / 35.3 s | 12.45 / 54.1 s | 1.26 / 1.53 | 5.0 / 12.0 GiB (worker) |
 | trajectory, per gradient round (real campaigns, five seeds) | 195 | 6.92 ± 0.11 s | 8.87 ± 0.18 s | 1.28 | |
 | validation forward, monomer, 3 recycles | 80 / 195 / 259 | 0.77 / 3.78 / 7.70 s | 1.22 / 7.03 / 13.15 s | 1.59 / 1.86 / 1.71 | 0.98 / 2.64 / 3.24 GiB (worker) |
 | validation refold set, per validation model: 10 candidates x (complex of 195 + binder alone of 80) | | 45.5 s | 82.5 s | 1.81 | |

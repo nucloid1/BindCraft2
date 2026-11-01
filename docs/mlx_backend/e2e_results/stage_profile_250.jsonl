@@ -1,0 +1,17 @@
+{"backend": "mlx", "residues": 250, "stage": "embeddings + templates", "ms": 40.9, "note": ""}
+{"backend": "mlx", "residues": 250, "stage": "one extra-MSA block", "ms": 30.4, "note": "x4 in a pass"}
+{"backend": "mlx", "residues": 250, "stage": "one main Evoformer block", "ms": 31.2, "note": "x48 in a pass"}
+{"backend": "mlx", "residues": 250, "stage": "embeddings and Evoformer (1+1 / 1+4 / 48+4 blocks)", "ms": 1660.5, "note": "102.5 / 193.6 / 1660.5 ms"}
+{"backend": "mlx", "residues": 250, "stage": "structure module + heads (whole pass minus the above)", "ms": 13.4, "note": ""}
+{"backend": "mlx", "residues": 250, "stage": "whole forward pass, no recycle", "ms": 1673.9, "note": ""}
+{"backend": "mlx", "residues": 250, "stage": "whole forward, one recycle", "ms": 3349.4, "note": ""}
+{"backend": "mlx", "residues": 250, "stage": "vjp, cotangent on every output", "ms": 6248.1, "note": "final pass recomputed with remat; recycle state cached"}
+{"backend": "mlx", "residues": 250, "stage": "vjp, cotangent on the distogram only (no structure module in the backward)", "ms": 6211.9, "note": "final pass recomputed with remat; recycle state cached"}
+{"backend": "mlx", "residues": 250, "stage": "vjp, cotangent on the positions only", "ms": 6558.5, "note": "final pass recomputed with remat; recycle state cached"}
+peak memory 4.00 GiB
+{"backend": "jax:metal", "residues": 250, "stage": "embeddings + templates", "ms": -25.1, "note": ""}
+{"backend": "jax:metal", "residues": 250, "stage": "one extra-MSA block", "ms": 69.8, "note": "x4 in a pass"}
+{"backend": "jax:metal", "residues": 250, "stage": "one main Evoformer block", "ms": 53.4, "note": "x48 in a pass"}
+{"backend": "jax:metal", "residues": 250, "stage": "embeddings and Evoformer (1+1 / 1+4 / 48+4 blocks)", "ms": 2819.2, "note": "98.2 / 307.5 / 2819.2 ms"}
+{"backend": "jax:metal", "residues": 250, "stage": "structure module + heads (whole pass minus the above)", "ms": 54.6, "note": ""}
+{"backend": "jax:metal", "residues": 250, "stage": "whole forward pass, no recycle", "ms": 2873.9, "note": ""}

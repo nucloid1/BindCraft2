@@ -1,0 +1,4 @@
+{"backend": "jax:metal", "dtype": "bf16", "residues": 250, "step_s": 12.46, "peak_rss_gib": 4.24}
+{"backend": "jax:metal", "dtype": "bf16", "residues": 400, "step_s": 54.292, "peak_rss_gib": 5.15}
+{"backend": "jax:metal", "dtype": "bf16", "residues": 400, "step_s": 53.935, "peak_rss_gib": 4.15}
+{"backend": "jax:metal", "dtype": "bf16", "residues": 250, "step_s": 12.436, "peak_rss_gib": 4.81}

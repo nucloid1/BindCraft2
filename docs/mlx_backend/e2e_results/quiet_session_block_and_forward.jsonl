@@ -1,0 +1,10 @@
+{"backend": "mlx", "device": "gpu", "dtype": "bf16", "residues": 150, "forward_ms": 10.1, "forward_backward_ms": 27.5, "peak_gib": 1.11}
+{"backend": "mlx", "device": "gpu", "dtype": "bf16", "residues": 250, "forward_ms": 30.9, "forward_backward_ms": 86.3, "peak_gib": 2.51}
+{"backend": "mlx", "device": "gpu", "dtype": "bf16", "residues": 400, "forward_ms": 100.7, "forward_backward_ms": 277.4, "peak_gib": 7.25}
+{"backend": "jax:metal", "dtype": "bf16", "residues": 150, "forward_ms": 12.4, "forward_backward_ms": 27.0, "peak_rss_gib": 1.45}
+{"backend": "jax:metal", "dtype": "bf16", "residues": 250, "forward_ms": 31.4, "forward_backward_ms": 80.8, "peak_rss_gib": 1.45}
+{"backend": "jax:metal", "dtype": "bf16", "residues": 400, "forward_ms": 95.6, "forward_backward_ms": 487.6, "peak_rss_gib": 1.92}
+{"backend": "mlx", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 3.32, "worker_peak_gib": 2.47}
+{"backend": "mlx", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 11.091, "worker_peak_gib": 3.72}
+{"backend": "jax:metal", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 5.667, "peak_rss_gib": 4.11}
+{"backend": "jax:metal", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 23.857, "peak_rss_gib": 4.76}

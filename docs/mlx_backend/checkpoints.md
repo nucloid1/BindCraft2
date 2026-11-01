@@ -105,20 +105,38 @@ One design step's model work, forward plus the vjp that follows (`scripts/mlx_af
 
 | residues | MLX forward + vjp | MLX worker peak | JAX Metal step |
 |---|---|---|---|
-| 250 | 3.4 + 6.5 = 9.9 s | 5.7 GiB | 13.5 s (1.37x) |
-| 400 | 12.1 + 35.2 = 47.3 s | 12.0 GiB | 83.0 s (1.75x), metaljax's memory governor waiting at its 36 GB ceiling |
+| 250 | 3.4 + 6.5 = 9.9 s | 5.0 GiB | 12.45 s (1.26x) |
+| 400 | 11.2 + 24.1 = 35.3 s | 11.9 to 12.1 GiB | 54.1 s (1.53x) |
+
+Corrected 2026-11-01. This table first read 400 residues: 12.1 + 35.2 = 47.3 s against 83.0 s (1.75x), and 250 residues: 13.5 s for JAX (1.37x). Neither reproduced in a quiet session: MLX through the worker gave a 24.1 s vjp twice (35.31 s per step both times; 9.88 s at 250), in process 22.6 to 24.9 s, and JAX gave 54.29 and 53.94 s at 400 and 12.46 and 12.44 s at 250. The cause of the slow session is not established (the single-block and forward rows of the tables above, re-measured in the quiet session, reproduced within about 2%, so only the whole-step runs were affected). Raw rows: `e2e_results/design_step_requery_mlx.jsonl`, `design_step_requery_jax.jsonl`, `quiet_session_block_and_forward.jsonl` and `vjp_400_experiments.log`.
 
 `precise=True` in the softmax costs nothing measurable (identical within noise, under 1%, in alternating runs at 150, 250 and 400 residues), so it stays.
 
-### Open: investigate speed headroom (Ethan asked for this note, 2026-10-31)
+### Speed headroom: what the investigation found (Ethan asked for it 2026-10-31; run 2026-11-01)
 
-A single block only TIES metaljax at 150 and 250 residues (MLX is faster only at 400, backward, 1.8x), so the end-to-end gain of 1.4x to 1.75x comes from somewhere other than the block, and there is probably more to take. Leads, in the order the numbers suggest:
-1. The 400-residue vjp is 35.2 s where the blocks predict about 20 s (52 blocks x (101 ms forward recompute + 278 ms forward + backward)); at 250 residues the same arithmetic fits (6.1 s predicted, 6.5 s measured). About 15 s is unexplained and appears only at 400: suspect allocator and memory pressure at 12 GiB, the attention chunk size (`layers.ATTENTION_CHUNK`), the structure module or the heads in the backward pass, or remat recompute. A per-stage profile of the vjp at 400 residues is the first thing to do.
-2. `mx.compile` on the Evoformer block (the JAX side is jitted, MLX runs eagerly): fuses the many small elementwise ops (layer norms, gating, residual adds).
-3. `mx.fast.scaled_dot_product_attention` (or a fused path) for the triangle and MSA attentions instead of the explicit logits, softmax and weighted sum; the bias terms and the 1e5-style masking must be preserved, and the parity gates are the safety net.
-4. Where the end-to-end 1.37x at 250 residues comes from if not the blocks (the front, the structure module, the heads, the recycle pass) and whether the same ops are slow in the JAX Metal path for a reason that also applies here.
-5. Memory: remat per block is on; the 400-residue peak of 12 GiB leaves room under the cap, so a lighter remat (checkpoint every second block) might trade memory for speed.
-Not on the list: the ANE (measured slower than the GPU on every op, 1.5x to 2.8x) and the softmax precision (free).
+Everything here is measured on the M3 Max in bf16, warm, in one quiet session; the scripts are `scripts/mlx_af2/profile_block.py`, `profile_model.py` and `experiments/` (the experiments are scratch probes, not backend code), the raw rows are in `e2e_results/`. Nothing below is built into the backend.
+
+**1. The "unexplained 15 s at 400 residues" was a measurement artifact.** The vjp at 400 residues is 24.1 s through the worker (twice) and 22.6 to 24.9 s in process, against about 19.8 s predicted from the blocks. The 35.2 s did not reproduce (see the correction above). `layers.ATTENTION_CHUNK` 512 instead of 256 gains nothing (24.9 against 23.9 s, and 1.2 GiB more memory), so the chunk size is not a lever.
+
+**2. Where the end-to-end gain comes from.** Not from MLX being faster per op: per op, MLX ties or trails (`e2e_results/profile_block_mlx_vs_jax.jsonl`; the two triangle multiplications, about 40% of a block, run at 0.59 to 0.81x of metaljax, the MSA ops and the pair transition are 1.4 to 4x faster, the triangle attentions tie). It comes from what metaljax pays for the same blocks inside the whole-model graph. One bf16 pass at 250 residues (`e2e_results/stage_profile_250.jsonl`):
+
+| | MLX | metaljax |
+|---|---|---|
+| one main block, in the model (x48) | 31.2 ms | 53.4 ms |
+| one extra-MSA block, in the model (x4) | 30.4 ms | 69.8 ms |
+| sum of the nine ops of a block, alone (profile_block) | 35.0 ms | 33.1 ms |
+| structure module + heads | 13 ms | 55 ms |
+| whole pass | 1674 ms | 2874 ms |
+
+MLX's blocks cost the same in the model as alone; metaljax's cost 60% more in the model (and 78% more at 400 residues, whole block forward + backward 488 ms against 274 ms for its ops summed, which reproduces). The cause on the metaljax side was not isolated. The structure module and the heads are under 3% of a pass on either side, and the vjp costs the same with the cotangent on the distogram alone (6.21 s) as on every output (6.25 s), so the backward through the structure module is negligible. The vjp is 6.25 s at 250 residues: the final pass forward again (1.67 s), then 52 blocks of recompute plus backward (52 x 80.5 ms = 4.2 s); the arithmetic fits.
+
+**3. Headroom, ranked by what it could save, with its risk.**
+- **A. Compile the Evoformer block (largest, moderate risk).** `mx.compile` of a block cuts its forward by 26% at 250 residues (30.9 to 22.7 ms) and 32% at 400 (100.7 to 68.2 ms). Compiling the function does not touch the backward when its vjp is taken afterwards (85.2 against 84.9 ms, 274.2 against 273.8 ms), but compiling a closure that computes the vjp itself fuses the backward too: block forward + backward 85.2 to 66.6 ms (-22%) at 250 and 274.2 to 204.2 ms (-26%) at 400, with gradients identical to the uncompiled ones (relative difference 0.0 in the test). The backend takes the vjp over `mx.checkpoint`ed blocks, which is the case that gains nothing, so using this means writing the stack's backward as an explicit reverse loop over per-block compiled vjp closures. Not measured: the compile time of a new shape (every new binder length is one), and the memory of the compiled graphs.
+- **B. Do not repeat the final pass's forward in the vjp (second, same restructuring as A).** The design forward call keeps nothing of its final pass, so the vjp redoes it: 1.67 s of the 6.25 s at 250 residues, about 5.5 s of the 24 s at 400 (22 to 27% of the vjp). Keeping each block's inputs from the forward call (52 blocks of one pair tensor, 41 MB at 400 residues, about 2.2 GiB in all; only the latest call needs it, the design loop's vjp follows its forward) lets the vjp start at the backward.
+- Projected together from the block timings, NOT measured: a design step of about 6 s at 250 residues and 19.5 s at 400 against 9.9 and 35.3 s now, which would be about 2.0x and 2.8x faster than metaljax instead of 1.26x and 1.53x.
+- **C. The worker's allocator cache limit (small, low risk).** The worker caps MLX's allocator cache at 2 GiB; with MLX's default the 400-residue vjp took 22.6 s instead of 23.9 s and the 48+4-block Evoformer vjp 19.9 s instead of 22.5 s (5 to 12%, one run each, to be repeated before it is believed). The peak is 9.7 GiB against a 36 GiB cap.
+- **D. Exact-variance layer norms (the open decision below).** Replacing the triangle multiplication's fast-variance chain with `mx.fast.layer_norm` speeds the uncompiled op by 10% (250) and 13% (400) forward + backward, but a compiled fast-variance forward (3.37 ms at 250) already beats the uncompiled exact one (4.57 ms), so with A the speed argument for exact variance disappears and only the accuracy argument remains.
+- **Ruled out:** the attention chunk size; writing the triangle multiplication's einsum as channel-major matmuls (identical, 4.82 against 4.83 ms; MLX's einsum already does that); the structure module and heads; the Neural Engine; softmax precision. **Not tested:** `mx.fast.scaled_dot_product_attention` for the triangle and MSA attentions (its MLX vjp is unfused, and attention already ties metaljax per op).
 
 ## The suite on the GPU, and a gradient finding about the shipped model (2026-10-31)
 
