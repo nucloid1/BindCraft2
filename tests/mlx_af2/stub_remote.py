@@ -50,7 +50,7 @@ def serve(connection) -> None:
             connection.send(('ok', None))
         elif operation in ('forward', 'vjp'):
             handle, key, features = payload['handle'], payload['key'], payload['features']
-            calls.append({'op': operation, 'handle': handle, 'key': tuple(int(x) for x in np.asarray(key).ravel()), 'use_dropout': bool(features['use_dropout']), 'features': sorted(features), 'num_recycle': payload['num_recycle'], 'subbatch_size': payload['subbatch_size']})
+            calls.append({'op': operation, 'retain': payload.get('retain'), 'handle': handle, 'key': tuple(int(x) for x in np.asarray(key).ravel()), 'use_dropout': bool(features['use_dropout']), 'features': sorted(features), 'num_recycle': payload['num_recycle'], 'subbatch_size': payload['subbatch_size']})
             if failure is not None:
                 message, failure = failure, None
                 connection.send(('error', message))
@@ -85,8 +85,8 @@ class StubRemote:
             raise StubError(value)
         return value
 
-    def forward(self, model_handle, key, features, num_recycle, subbatch_size):
-        return self.ask('forward', {'handle': int(model_handle), 'key': key, 'features': features, 'num_recycle': num_recycle, 'subbatch_size': subbatch_size})
+    def forward(self, model_handle, key, features, num_recycle, subbatch_size, retain=False):
+        return self.ask('forward', {'handle': int(model_handle), 'key': key, 'features': features, 'num_recycle': num_recycle, 'subbatch_size': subbatch_size, 'retain': retain})
 
     def vjp(self, model_handle, call_id, key, features, num_recycle, subbatch_size, cotangents, diff_keys):
         gradients = self.ask('vjp', {'handle': int(model_handle), 'key': key, 'features': features, 'num_recycle': num_recycle, 'subbatch_size': subbatch_size, 'cotangents': cotangents})

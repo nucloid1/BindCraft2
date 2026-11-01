@@ -51,6 +51,13 @@ def test_two_states_in_one_jit_call(remote):
     assert len(forwards) == 2 and model.trace_count == 2  #one call per state, each traced once
     assert remote.max_active == 1  #xla may run the two states' callbacks on different threads; the bridge must serialize them, a worker has one pipe
 
+def test_only_the_forward_of_a_gradient_asks_the_worker_to_keep_activations(remote):
+    #the worker keeps the final pass's block inputs (a tape) only for a forward whose vjp will follow: the custom_vjp forward rule; a plain forward (validation, prediction) must not hold that memory
+    gradients_and_loss(cases.build_model(BridgedModel, remote=remote), 'small')
+    features = cases.model_inputs('small')
+    jax.block_until_ready(bridge.mlx_model_outputs(remote, jnp.asarray(1, jnp.int32), jax.random.PRNGKey(0), features, 1, None))
+    assert [(call['op'], call['retain']) for call in remote.calls()] == [('forward', True), ('vjp', None), ('forward', False)]
+
 def test_integer_inputs_get_float0_cotangents(remote):
     features = cases.model_inputs('small')
     handle, key = jnp.asarray(1, jnp.int32), jax.random.PRNGKey(0)

@@ -141,8 +141,10 @@ class MonomerModel(MultimerModel):
         return embeddings_and_evoformer(self.params.scope('evoformer'), features, prev, self.cfg['embeddings_and_evoformer'], dtype=self.dtype, zero_init=self.cfg['global_config']['zero_init'],
                                         dropout_key=dropout_key, remat=remat, subbatch_size=subbatch_size)
 
-    def single_pass(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True) -> tuple[dict, dict]:
+    def single_pass(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True, tapes: dict | None = None) -> tuple[dict, dict]:
         #one AlphaFoldIteration: returns the nested outputs and the state the next pass starts from
+        if tapes is not None:
+            raise NotImplementedError(f'{self.model_name} is a validation model of the MLX backend (forward only): it keeps no tapes for a gradient')
         cfg, p = self.cfg, self.params
         keys = list(mx.random.split(dropout_key, 2)) if dropout_key is not None else [None, None]
         representations = self.trunk(features, prev, keys[0], subbatch_size=subbatch_size, remat=remat)

@@ -49,7 +49,7 @@ class InstantRemote:
     def __init__(self):
         self.outputs, self.rng = {}, np.random.default_rng(0)
 
-    def forward(self, model_handle, key, features, num_recycle, subbatch_size):
+    def forward(self, model_handle, key, features, num_recycle, subbatch_size, retain=False):
         length = features['aatype'].shape[0]
         if length not in self.outputs:
             made = {name: (0.1 * self.rng.standard_normal(shape)).astype(dtype) for name, (shape, dtype) in output_shapes(length).items()}

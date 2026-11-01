@@ -1,5 +1,7 @@
 #The seam: AlphaFold inside the jitted loss becomes a jax.custom_vjp whose forward and backward each call the MLX worker through jax.pure_callback. jax's own autodiff then yields
-#forward, loss, backward with the front, the loss and the optimizer untouched. The worker recomputes the final pass inside its vjp, which is the one extra forward per step.
+#forward, loss, backward with the front, the loss and the optimizer untouched. The forward rule asks the worker to keep the final pass's block inputs (a tape) under the call id, so the vjp that follows does not
+#repeat the final pass's Evoformer; a plain forward (validation, prediction) keeps none.
+import functools
 import threading
 
 import jax
@@ -35,9 +37,9 @@ def mlx_model_outputs(remote, model_handle: jax.Array, key: jax.Array, model_inp
     def numpy_features(arrays: dict) -> dict:
         return {name: np.asarray(value) for name, value in arrays.items()}
 
-    def host_forward(handle, key, arrays):
+    def host_forward(handle, key, arrays, retain=False):
         with REMOTE_CALLS:
-            outputs, call_id = remote.forward(int(handle), np.asarray(key), numpy_features(arrays), num_recycle, subbatch_size)
+            outputs, call_id = remote.forward(int(handle), np.asarray(key), numpy_features(arrays), num_recycle, subbatch_size, retain=retain)
         return tuple(np.asarray(outputs[name], dtype=spec[name].dtype) for name in OUTPUT_KEYS), np.int32(call_id)
 
     def host_vjp(handle, call_id, key, arrays, cotangents):
@@ -51,7 +53,7 @@ def mlx_model_outputs(remote, model_handle: jax.Array, key: jax.Array, model_inp
         return outputs
 
     def run_forward(handle, key, arrays):
-        outputs, call_id = jax.pure_callback(host_forward, (result_spec, call_id_spec), handle, key, arrays)
+        outputs, call_id = jax.pure_callback(functools.partial(host_forward, retain=True), (result_spec, call_id_spec), handle, key, arrays)
         return outputs, (handle, key, arrays, call_id)
 
     def run_backward(residuals, cotangents):

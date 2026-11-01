@@ -2,7 +2,7 @@
 #the embeddings and Evoformer, the structure module and the heads (modules_multimer.AlphaFoldIteration). The outputs are the flat names in outputs.OUTPUT_KEYS.
 import mlx.core as mx
 
-from bindcraft.af.mlx_af2 import embeddings, heads, structure, templates
+from bindcraft.af.mlx_af2 import embeddings, evoformer, heads, structure, templates
 from bindcraft.af.mlx_af2.outputs import OUTPUT_KEYS
 
 class MultimerModel:
@@ -15,13 +15,17 @@ class MultimerModel:
         length = features['aatype'].shape[0]
         return {'prev_msa_first_row': mx.zeros((length, self.cfg['embeddings_and_evoformer']['msa_channel'])), 'prev_pair': mx.zeros((length, length, self.cfg['embeddings_and_evoformer']['pair_channel'])), 'prev_pos': mx.zeros((length, 37, 3))}
 
-    def single_pass(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True) -> tuple[dict, dict]:
+    def new_tapes(self) -> dict:
+        #one tape per block stack of the final pass: forward_with_state(tapes=) records them, vjp(tapes=) consumes them and skips that pass's Evoformer forward
+        return {'extra_msa_stack': evoformer.Tape(), 'evoformer_iteration': evoformer.Tape()}
+
+    def single_pass(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True, tapes: dict | None = None) -> tuple[dict, dict]:
         #one AlphaFoldIteration: returns the nested outputs and the state the next pass starts from
         cfg, p = self.cfg, self.params
         keys = list(mx.random.split(dropout_key, 2)) if dropout_key is not None else [None, None]
         embedding_cfg = cfg['embeddings_and_evoformer']
         hook = templates.template_hook(p.scope('evoformer'), features, embedding_cfg, self.dtype) if embedding_cfg['template']['enabled'] else None
-        representations = embeddings.embeddings_and_evoformer(p.scope('evoformer'), features, prev, embedding_cfg, dtype=self.dtype, dropout_key=keys[0], remat=remat, subbatch_size=subbatch_size, template_embedding=hook)
+        representations = embeddings.embeddings_and_evoformer(p.scope('evoformer'), features, prev, embedding_cfg, dtype=self.dtype, dropout_key=keys[0], remat=remat, subbatch_size=subbatch_size, template_embedding=hook, tapes=tapes)
         sm = structure.structure_module(p.scope('structure_module'), representations, features, cfg['heads']['structure_module'], dropout_key=keys[1])
         representations['structure_module'] = sm['act']
         h = cfg['heads']
@@ -56,11 +60,12 @@ class MultimerModel:
             return {**features, 'initial_atom_pos': prev['prev_pos']}
         return features
 
-    def forward_with_state(self, features: dict, key, num_recycle: int, *, subbatch_size: int | None = None, use_dropout: bool | None = None) -> tuple[dict[str, mx.array], dict, dict]:
-        #the flat outputs by OUTPUT_KEYS, the state after the final pass, and the state BEFORE it (what vjp resumes from: the recycle passes are not repeated); key is the uint32 pair of a JAX PRNG key
+    def forward_with_state(self, features: dict, key, num_recycle: int, *, subbatch_size: int | None = None, use_dropout: bool | None = None, tapes: dict | None = None) -> tuple[dict[str, mx.array], dict, dict]:
+        #the flat outputs by OUTPUT_KEYS, the state after the final pass, and the state BEFORE it (what vjp resumes from: the recycle passes are not repeated); key is the uint32 pair of a JAX PRNG key.
+        #tapes (new_tapes()) are filled with the final pass's block inputs, for a vjp of the same call
         keys = self.dropout_keys(features, key, num_recycle, use_dropout)
         features, before = self.recycle(features, keys, num_recycle, subbatch_size=subbatch_size)
-        outputs, after = self.single_pass(features, before, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=False)
+        outputs, after = self.single_pass(features, before, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=False, tapes=tapes)
         flat = {f'{group}/{name}': value for group, tensors in outputs.items() for name, value in tensors.items()}
         return {name: flat[name].astype(mx.float32) for name in OUTPUT_KEYS}, after, before
 
@@ -69,9 +74,10 @@ class MultimerModel:
         return outputs, after
 
     def vjp(self, features: dict, key, num_recycle: int, cotangents: dict[str, mx.array], diff_keys: tuple[str, ...], *, prev: dict | None = None, subbatch_size: int | None = None,
-            use_dropout: bool | None = None) -> dict[str, mx.array]:
+            use_dropout: bool | None = None, tapes: dict | None = None) -> dict[str, mx.array]:
         #the gradient of sum(cotangent * output) with respect to the features named in diff_keys, through the final pass only (the recycle passes carry no gradient, as in recycled_alphafold_outputs); prev, the
-        #state before the final pass from forward_with_state, skips them; each Evoformer block is recomputed in the backward pass instead of kept. use_dropout follows the features' flag like forward does
+        #state before the final pass from forward_with_state, skips them; each Evoformer block is recomputed in the backward pass instead of kept. use_dropout follows the features' flag like forward does.
+        #tapes, recorded by forward_with_state for this same call, skip the final pass's Evoformer forward as well
         keys = self.dropout_keys(features, key, num_recycle, use_dropout)
         if prev is None:
             features, prev = self.recycle(features, keys, num_recycle, subbatch_size=subbatch_size)
@@ -80,7 +86,7 @@ class MultimerModel:
         names = [name for name in OUTPUT_KEYS if name in cotangents]
 
         def final(*arrays):
-            outputs, _ = self.single_pass({**features, **dict(zip(diff_keys, arrays))}, prev, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=True)
+            outputs, _ = self.single_pass({**features, **dict(zip(diff_keys, arrays))}, prev, keys[-1] if keys else None, subbatch_size=subbatch_size, remat=True, tapes=tapes)
             flat = {f'{group}/{name}': value for group, tensors in outputs.items() for name, value in tensors.items()}
             return [flat[name].astype(mx.float32) for name in names]
 

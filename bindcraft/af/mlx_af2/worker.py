@@ -14,7 +14,9 @@ block, the worker puts its output in a block it creates and hands over (the pare
     worker -> parent  ("ready", {pid, jax_imported, torch_imported, device}) once, then ("ok", {...}) | ("error", traceback)
 
 The parent numbers its forward calls (an id that never repeats, restarts included); the worker keeps the state before the final pass of the last MAX_CALLS of them, so a vjp for one of them skips the recycle
-passes, and recomputes that state when the id is unknown, evicted, or was issued for other inputs (handle, recycles or key differ). A model handle is an integer the worker assigns at load; the parent embeds it in the jitted loss as the runtime argument that says which model to run. Weights stay resident for at most
+passes, and recomputes that state when the id is unknown, evicted, or was issued for other inputs (handle, recycles, key or feature shapes differ). A forward that asks to retain (the bridge's custom_vjp forward rule)
+also keeps its final pass's block inputs, a tape per Evoformer stack, so that call's vjp skips the final pass's Evoformer forward; tapes are dropped oldest first beyond a byte budget (tape_budget_bytes) and after the
+vjp that used them, and a vjp whose tapes are gone recomputes them: correctness never depends on a tape being there. A model handle is an integer the worker assigns at load; the parent embeds it in the jitted loss as the runtime argument that says which model to run. Weights stay resident for at most
 MAX_LOADED models (least recently used goes first, and is read again if used again). A worker that dies (its memory guard, the OS, a crash) raises WorkerError naming the exit code and the memory cap;
 the next call starts a new one and the parent re-registers the models it had loaded, in order, so handles stay valid; the call that failed is never retried and there is never a fallback to another backend.
 """
@@ -42,6 +44,9 @@ ALIGN = 64
 DTYPES = ('bf16', 'fp32')
 MAX_LOADED = 5
 MAX_CALLS = 8
+TAPE_BUDGET_ENV = 'BINDCRAFT_MLX_TAPE_GIB'  #the most memory kept tapes may hold, in GiB; default a fifth of the worker's cap (about 2.2 GiB per call at 400 residues)
+TAPE_FRACTION = 0.2
+UNCAPPED_TAPE_GIB = 8.0  #a worker started without a cap
 CALL_TIMEOUT_ENV = 'BINDCRAFT_MLX_CALL_TIMEOUT_S'
 DEFAULT_CALL_TIMEOUT_S = 1800.0  #the slowest legitimate call is a gradient at several hundred residues on a loaded machine, about a minute; this is a net for a wedge, not a speed limit
 DEVICE_ENV = 'BINDCRAFT_MLX_DEVICE'
@@ -89,6 +94,24 @@ def payload_bytes(arrays: Dict[str, np.ndarray]) -> int:
     return sum(np.asarray(array).nbytes for array in arrays.values())
 
 #----------------------------------------------------------------------------------------- worker side
+def tape_budget_bytes(cap_gib: Optional[float]) -> int:
+    configured = os.environ.get(TAPE_BUDGET_ENV, '').strip()
+    gib = float(configured) if configured else (TAPE_FRACTION * cap_gib if cap_gib else UNCAPPED_TAPE_GIB)
+    return int(gib * 2 ** 30)
+
+def drop_tapes_over_budget(calls: 'collections.OrderedDict[int, dict]', budget: int) -> None:
+    #oldest first, the newest last: a call whose tapes alone exceed the budget keeps none (its vjp recomputes them)
+    total = sum(entry['tape_bytes'] for entry in calls.values())
+    for entry in calls.values():
+        if total <= budget:
+            return
+        if entry['tapes'] is not None:
+            total -= entry['tape_bytes']
+            entry['tapes'], entry['tape_bytes'] = None, 0
+
+def shapes_of(arrays: Dict[str, Any]) -> Dict[str, Tuple[int, ...]]:
+    return {name: tuple(array.shape) for name, array in arrays.items()}
+
 def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
     import contextlib
     import time
@@ -111,8 +134,9 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
     with guard as peak:
         registry: Dict[int, dict] = {}
         resident: List[int] = []  #handles holding weights, least recently used first
-        calls: 'collections.OrderedDict[int, dict]' = collections.OrderedDict()  #call id -> the state before the final pass, oldest first
-        vjp_calls = {'hits': 0, 'misses': 0}
+        calls: 'collections.OrderedDict[int, dict]' = collections.OrderedDict()  #call id -> the state before the final pass (and the final pass's tapes, when retained), oldest first
+        vjp_calls = {'hits': 0, 'misses': 0, 'tape_hits': 0, 'tape_misses': 0}
+        budget = tape_budget_bytes(cap_gib)
         send(proto_out, ('ready', {'pid': os.getpid(), 'jax_imported': 'jax' in sys.modules, 'torch_imported': 'torch' in sys.modules, 'device': device}))
 
         def model_for(handle: int):
@@ -155,12 +179,17 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
                     try:
                         arrays = views(block, request['layout'])
                         features = {name[2:]: mx.array(array) for name, array in arrays.items() if name.startswith('f/')}
-                        outputs, _, before = model_for(request['handle']).forward_with_state(features, arrays['key'], request['num_recycle'], subbatch_size=request['subbatch_size'])
+                        model = model_for(request['handle'])
+                        retain = bool(request.get('retain')) and model_family(registry[request['handle']]['name']) == 'multimer'  #only a model with a gradient keeps tapes
+                        tapes = model.new_tapes() if retain else None
+                        outputs, _, before = model.forward_with_state(features, arrays['key'], request['num_recycle'], subbatch_size=request['subbatch_size'], tapes=tapes)
                         host = {name: np.array(value) for name, value in outputs.items()}
-                        calls[request['call_id']] = {'handle': request['handle'], 'num_recycle': request['num_recycle'], 'key': np.array(arrays['key']), 'prev': before}
+                        calls[request['call_id']] = {'handle': request['handle'], 'num_recycle': request['num_recycle'], 'key': np.array(arrays['key']), 'shapes': shapes_of(features), 'prev': before,
+                                                     'tapes': tapes, 'tape_bytes': sum(tape.nbytes for tape in tapes.values()) if tapes else 0}
                         while len(calls) > MAX_CALLS:
                             calls.popitem(last=False)
-                        del arrays, features, before
+                        drop_tapes_over_budget(calls, budget)
+                        del arrays, features, before, tapes, model
                     finally:
                         block.close()
                     out_block, layout = pack(host)
@@ -175,12 +204,17 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
                         features = {name[2:]: mx.array(array) for name, array in arrays.items() if name.startswith('f/')}
                         cotangents = {name[2:]: mx.array(array) for name, array in arrays.items() if name.startswith('c/')}
                         cached = calls.get(request['call_id'])
-                        hit = cached is not None and cached['handle'] == request['handle'] and cached['num_recycle'] == request['num_recycle'] and np.array_equal(cached['key'], arrays['key'])
+                        hit = (cached is not None and cached['handle'] == request['handle'] and cached['num_recycle'] == request['num_recycle'] and np.array_equal(cached['key'], arrays['key'])
+                               and cached['shapes'] == shapes_of(features))
+                        tapes = cached['tapes'] if hit else None
                         vjp_calls['hits' if hit else 'misses'] += 1
+                        vjp_calls['tape_hits' if tapes is not None else 'tape_misses'] += 1
                         gradients = model_for(request['handle']).vjp(features, arrays['key'], request['num_recycle'], cotangents, tuple(request['diff_keys']), prev=cached['prev'] if hit else None,
-                                                                    subbatch_size=request['subbatch_size'])
+                                                                    subbatch_size=request['subbatch_size'], tapes=tapes)
                         host = {name: np.array(value) for name, value in gradients.items()}
-                        del arrays, features, cotangents, cached
+                        if tapes is not None:  #a call's vjp runs once: its tapes have served
+                            cached['tapes'], cached['tape_bytes'] = None, 0
+                        del arrays, features, cotangents, cached, tapes
                     finally:
                         block.close()
                     out_block, layout = pack(host)
@@ -189,7 +223,8 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
                     reply = {'out_shm': out_block.name, 'out_layout': layout}
                 elif kind == 'stats':
                     reply = {'peak': dict(peak or {}), 'loaded_models': len(resident), 'registered_models': len(registry), 'cached_calls': len(calls), 'vjp_cache_hits': vjp_calls['hits'],
-                             'vjp_cache_misses': vjp_calls['misses']}
+                             'vjp_cache_misses': vjp_calls['misses'], 'tape_hits': vjp_calls['tape_hits'], 'tape_misses': vjp_calls['tape_misses'],
+                             'tape_bytes': sum(entry['tape_bytes'] for entry in calls.values())}
                 else:
                     raise ValueError(f'unknown request {kind!r}')
                 reply['seconds'] = time.perf_counter() - start
@@ -343,7 +378,7 @@ class RemoteModel:
 
     def stats(self) -> dict:
         reply = self.exchange('stats', {}, {})
-        return {**reply['peak'], **{name: reply[name] for name in ('loaded_models', 'registered_models', 'cached_calls', 'vjp_cache_hits', 'vjp_cache_misses')}}
+        return {**reply['peak'], **{name: reply[name] for name in ('loaded_models', 'registered_models', 'cached_calls', 'vjp_cache_hits', 'vjp_cache_misses', 'tape_hits', 'tape_misses', 'tape_bytes')}}
 
     def load(self, model_name: str, cfg: dict) -> int:
         #register a model and return its handle; the weights are read when it is first used
@@ -366,14 +401,14 @@ class RemoteModel:
         self.last_seconds = info['seconds']
         return outputs
 
-    def forward(self, model_handle: int, key: np.ndarray, features: Dict[str, np.ndarray], num_recycle: int, subbatch_size: Optional[int]) -> Tuple[Dict[str, np.ndarray], int]:
-        #returns the outputs and the call id a later vjp names to reuse the recycle state
+    def forward(self, model_handle: int, key: np.ndarray, features: Dict[str, np.ndarray], num_recycle: int, subbatch_size: Optional[int], retain: bool = False) -> Tuple[Dict[str, np.ndarray], int]:
+        #returns the outputs and the call id a later vjp names to reuse the recycle state; retain asks the worker to keep the final pass's tapes too (a forward whose vjp follows)
         arrays = {f'f/{name}': np.asarray(value) for name, value in features.items()}
         arrays['key'] = np.asarray(key, dtype=np.uint32)
         with self.lock:
             self.last_call_id += 1
             call_id = self.last_call_id
-            info = self.exchange('forward', {'handle': int(model_handle), 'call_id': call_id, 'num_recycle': int(num_recycle), 'subbatch_size': subbatch_size}, arrays)
+            info = self.exchange('forward', {'handle': int(model_handle), 'call_id': call_id, 'num_recycle': int(num_recycle), 'subbatch_size': subbatch_size, 'retain': bool(retain)}, arrays)
         return self.read_outputs(info), call_id
 
     def vjp(self, model_handle: int, call_id: int, key: np.ndarray, features: Dict[str, np.ndarray], num_recycle: int, subbatch_size: Optional[int], cotangents: Dict[str, np.ndarray],
