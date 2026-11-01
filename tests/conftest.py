@@ -23,9 +23,10 @@ def pytest_collection_modifyitems(config, items):
         if item.get_closest_marker('integration') or item.get_closest_marker('gpu'):
             item.add_marker(skip)
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='module')
 def gpu_session():
-    #one hold for the whole session; a held lock is a failure, never a skip, so a busy GPU is not mistaken for a green run
+    #one hold for as long as a module with gpu-marked tests runs, released before the next module: the clean-state lock tests must not run inside it (they inherit the lock's owner variable and its re-entrant depth).
+    #A held lock is a failure, never a skip, so a busy GPU is not mistaken for a green run
     from bindcraft.af.mlx_af2.gpu_lock import hold
     try:
         with hold():
