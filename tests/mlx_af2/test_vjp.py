@@ -218,22 +218,26 @@ def test_worker_vjp_with_dropout_on_is_the_same_on_a_cache_hit_and_a_miss(remote
         assert np.abs(hit[name]).max() > 0 and np.array_equal(hit[name], miss[name]), name
 
 @pytest.mark.integration
-def test_vjp_final_pass_uses_the_dropout_key_the_forwards_final_pass_used(model):
-    #the structural half of the replay check, independent of numerics (a finite difference of this model in float32 is noise): the key every pass receives, forward against vjp
+def test_vjp_final_pass_uses_the_dropout_key_the_forwards_final_pass_used(model, monkeypatch):
+    #the structural half of the replay check, independent of numerics (a finite difference of this model in float32 is noise): the key every pass receives, forward against vjp. The vjp runs its final pass as a
+    #chain (front, stacks, tail) rather than through single_pass, so the keys are read where both paths pass them: embeddings.front (the embeddings and the stacks) and heads_of (the structure module)
+    from bindcraft.af.mlx_af2 import embeddings
     ref = load_ref('small', 'fp32', 0)
     features = {name: mx.array(value) for name, value in {**crop(ref, 30, 42), 'use_dropout': np.asarray(True)}.items()}
     key = mx.array(np.asarray(ref['meta']['key'], np.uint32))
-    seen = []
-    real = model.single_pass
-    model.single_pass = lambda feats, prev, dropout_key=None, **keywords: (seen.append(None if dropout_key is None else np.asarray(mx.random.key_data(dropout_key) if hasattr(mx.random, 'key_data') else dropout_key).tolist()), real(feats, prev, dropout_key, **keywords))[1]
-    try:
-        outputs, _, _ = model.forward_with_state(features, key, 1)
-        forward_keys, seen[:] = list(seen), []
-        cotangents = {name: mx.array(value) for name, value in random_cotangents(outputs).items()}
-        model.vjp(features, key, 1, cotangents, DIFF)
-        vjp_keys = list(seen)
-    finally:
-        model.single_pass = real
-    assert len(forward_keys) == 2 and len(vjp_keys) == 2 and all(entry is not None for entry in forward_keys + vjp_keys)  #a recycle pass and a final pass, each with a key
-    assert forward_keys[0] != forward_keys[1]  #distinct per pass
-    assert vjp_keys == forward_keys  #the vjp's recycle pass and its final pass draw what the forward's did
+    as_list = lambda k: None if k is None else np.asarray(mx.random.key_data(k) if hasattr(mx.random, 'key_data') else k).tolist()
+    seen = {'front': [], 'heads': []}
+    real_front, real_heads = embeddings.front, model.heads_of
+    monkeypatch.setattr(embeddings, 'front', lambda *a, dropout_key=None, **k: (seen['front'].append(as_list(dropout_key)), real_front(*a, dropout_key=dropout_key, **k))[1])
+    monkeypatch.setattr(model, 'heads_of', lambda representations, feats, dropout_key=None: (seen['heads'].append(as_list(dropout_key)), real_heads(representations, feats, dropout_key))[1])
+    outputs, _, _ = model.forward_with_state(features, key, 1)
+    forward = {stage: list(keys) for stage, keys in seen.items()}
+    seen = {'front': [], 'heads': []}
+    cotangents = {name: mx.array(value) for name, value in random_cotangents(outputs).items()}
+    model.vjp(features, key, 1, cotangents, DIFF)
+    distinct = lambda keys: [entry for index, entry in enumerate(keys) if index == 0 or entry != keys[index - 1]]  #the chain reads the final pass's front twice (its inputs, then inside its vjp): one key
+    vjp = {stage: distinct(keys) for stage, keys in seen.items()}
+    for stage in ('front', 'heads'):
+        assert len(forward[stage]) == 2 and len(vjp[stage]) == 2 and all(entry is not None for entry in forward[stage] + vjp[stage]), stage  #a recycle pass and a final pass, each with a key
+        assert forward[stage][0] != forward[stage][1], stage  #distinct per pass
+        assert vjp[stage] == forward[stage], stage  #the vjp's recycle pass and its final pass draw what the forward's did

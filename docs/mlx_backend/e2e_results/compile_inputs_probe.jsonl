@@ -1,0 +1,15 @@
+{"stage": "discovered", "dropout_key": false, "tensors_per_block": 85}
+{"residues": 250, "dropout_key": false, "stage": "first calls", "fwd_first_s": 0.044, "fwd_second_layer_s": 0.023, "bwd_first_s": 0.071, "bwd_second_layer_s": 0.064, "new_fwd_traces": 1, "new_bwd_traces": 1}
+{"residues": 250, "dropout_key": false, "stage": "sweeps (48 blocks, s)", "plain_forward": 1.489, "compiled_forward": 1.086, "checkpointed_vjp_with_forward": 5.675, "compiled_reverse_from_tape": 3.176, "compiled_forward_plus_reverse": 4.262, "peak_gib": 4.2}
+{"residues": 250, "dropout_key": false, "stage": "gradient vs checkpointed stack", "max_rel_diff": [0.0, 0.0]}
+{"residues": 400, "dropout_key": false, "stage": "first calls", "fwd_first_s": 0.092, "fwd_second_layer_s": 0.067, "bwd_first_s": 0.233, "bwd_second_layer_s": 0.203, "new_fwd_traces": 1, "new_bwd_traces": 1}
+{"residues": 400, "dropout_key": false, "stage": "sweeps (48 blocks, s)", "plain_forward": 4.834, "compiled_forward": 3.252, "checkpointed_vjp_with_forward": 18.65, "compiled_reverse_from_tape": 10.287, "compiled_forward_plus_reverse": 13.54, "peak_gib": 11.17}
+{"residues": 400, "dropout_key": false, "stage": "gradient vs checkpointed stack", "max_rel_diff": [0.0, 0.0]}
+{"stage": "discovered", "dropout_key": true, "tensors_per_block": 85}
+{"residues": 250, "dropout_key": true, "stage": "first calls", "fwd_first_s": 0.825, "fwd_second_layer_s": 0.025, "bwd_first_s": 1.423, "bwd_second_layer_s": 0.065, "new_fwd_traces": 1, "new_bwd_traces": 1}
+{"residues": 250, "dropout_key": true, "stage": "sweeps (48 blocks, s)", "plain_forward": 1.562, "compiled_forward": 1.149, "checkpointed_vjp_with_forward": 5.9, "compiled_reverse_from_tape": 3.297, "compiled_forward_plus_reverse": 4.446, "peak_gib": 4.27}
+{"residues": 250, "dropout_key": true, "stage": "gradient vs checkpointed stack", "max_rel_diff": [0.0, 0.0]}
+{"residues": 400, "dropout_key": true, "stage": "first calls", "fwd_first_s": 0.09, "fwd_second_layer_s": 0.068, "bwd_first_s": 0.236, "bwd_second_layer_s": 0.205, "new_fwd_traces": 1, "new_bwd_traces": 1}
+{"residues": 400, "dropout_key": true, "stage": "sweeps (48 blocks, s)", "plain_forward": 5.03, "compiled_forward": 3.427, "checkpointed_vjp_with_forward": 18.391, "compiled_reverse_from_tape": 9.831, "compiled_forward_plus_reverse": 13.258, "peak_gib": 11.25}
+{"residues": 400, "dropout_key": true, "stage": "gradient vs checkpointed stack", "max_rel_diff": [0.0, 0.0]}
+{"stage": "total traces", "fwd": 4, "bwd": 4}

@@ -89,10 +89,26 @@ def test_one_compiled_function_serves_every_layer_and_a_new_shape_traces_once_mo
     monkeypatch.setenv(compiled.COMPILE_ENV, '1')
     params = load_params(jax_units.MODEL, cases.params_path(), dtype=mx.bfloat16).scope(MAIN)
     before = dict(compiled.TRACES)
-    for residues in (N, N, N + 4):
+    for residues in (N + 1, N + 1, N + 5):  #shapes no other test in the module traces, so the counts are this test's own
         msa, pair, msa_mask, pair_mask = inputs(256, 7, mx.bfloat16, residues)
-        run = lambda m, q, remat: evoformer.evoformer_stack(params, m, q, msa_mask, pair_mask, config(), num_block=3, remat=remat)
-        mx.eval(run(msa, pair, False))
-        mx.eval(mx.vjp(lambda m, q: list(run(m, q, True)), [msa, pair], [mx.ones_like(msa), mx.ones_like(pair)])[1])
+        tape = evoformer.Tape()
+        mx.eval(evoformer.evoformer_stack(params, msa, pair, msa_mask, pair_mask, config(), num_block=3, remat=False, tape=tape))  #the forward the design call runs
+        mx.eval(evoformer.stack_vjp(params, tape, [mx.ones_like(msa), mx.ones_like(pair)], msa_mask, pair_mask, config()))  #the reverse loop the model's vjp calls directly
     new = {name: compiled.TRACES[name] - before.get(name, 0) for name in ('forward', 'backward')}
-    assert new == {'forward': 2, 'backward': 2}, new  #3 blocks x 3 runs, but one trace per shape: 10 residues (twice) and 14 residues
+    assert new == {'forward': 2, 'backward': 2}, new  #3 blocks x 3 runs, but one trace per shape: 11 residues (twice) and 15 residues
+
+@pytest.mark.gpu
+def test_the_models_vjp_runs_the_compiled_blocks_outside_any_transformation():
+    #MLX runs a compiled function inline, unfused and retraced on every call, when it is called inside another transformation (mx.vjp, mx.grad): the model's vjp must call the stacks' compiled vjp
+    #closures directly, so a second vjp at the same shape traces nothing new
+    from helpers import load_ref
+    from test_model_multimer import build_model, features_from
+    from test_vjp import DIFF, cotangents_from, key_of
+    model = build_model()
+    ref = load_ref('small', 'fp32', 0)
+    features, key, cotangents = features_from(ref), key_of(ref), cotangents_from(ref)
+    _, _, before = model.forward_with_state(features, key, 1)
+    model.vjp(features, key, 1, cotangents, DIFF, prev=before)
+    traced = dict(compiled.TRACES)
+    model.vjp(features, key, 1, cotangents, DIFF, prev=before)
+    assert dict(compiled.TRACES) == traced

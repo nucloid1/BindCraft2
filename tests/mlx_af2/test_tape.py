@@ -7,6 +7,7 @@ import pytest
 
 import cases
 from bindcraft.af.mlx_af2 import worker as worker_module
+from bindcraft.af.mlx_af2.outputs import OUTPUT_KEYS
 from bindcraft.af.mlx_af2.worker import RemoteModel
 from helpers import assert_live, load_ref, rel_err
 from test_model_multimer import build_model, features_from
@@ -34,8 +35,33 @@ def test_vjp_from_the_forward_calls_tapes_equals_the_recomputed_vjp(model, dropo
         assert_live(np.asarray(recomputed[name]), name)
         assert rel_err(taped[name], recomputed[name]) < 1e-6, name
 
+@pytest.mark.parametrize('dropout', (False, True))
+def test_the_vjp_equals_the_whole_graph_vjp_of_the_final_pass(model, dropout):
+    #the oracle: mx.vjp over the whole final pass (the previous implementation). The model's vjp is a chain (tail, main stack, extra stack, front) run outside any transformation so the compiled blocks stay
+    #fused; a feature that reached the outputs other than through the front's msa and pair would get a wrong gradient from the chain, and this comparison is what rules that out
+    ref = load_ref('small', 'fp32', 0)
+    features, key, cotangents, recycles = features_from(ref), key_of(ref), cotangents_from(ref), ref['meta']['num_recycle']
+    if dropout:
+        features = {**features, 'use_dropout': mx.array(True)}
+    _, _, before = model.forward_with_state(features, key, recycles)
+    keys = model.dropout_keys(features, key, recycles, None)
+    final = model.final_features(features, before, recycles)
+    names = [name for name in OUTPUT_KEYS if name in cotangents]
+
+    def whole(*arrays):
+        outputs, _ = model.single_pass({**final, **dict(zip(DIFF, arrays))}, before, keys[-1] if keys else None, remat=True)
+        flat = {f'{group}/{name}': value for group, tensors in outputs.items() for name, value in tensors.items()}
+        return [flat[name].astype(mx.float32) for name in names]
+
+    _, want = mx.vjp(whole, [final[name] for name in DIFF], [cotangents[name] for name in names])
+    got = model.vjp(features, key, recycles, cotangents, DIFF, prev=before)
+    for name, expected in zip(DIFF, want):
+        assert_live(np.asarray(expected), name)
+        assert rel_err(got[name], expected) < 1e-6, name
+
 def test_a_tape_makes_the_vjp_skip_the_final_pass_of_both_stacks(model, monkeypatch):
-    from bindcraft.af.mlx_af2 import evoformer
+    from bindcraft.af.mlx_af2 import compiled, evoformer
+    monkeypatch.setenv(compiled.COMPILE_ENV, '0')  #counts the loop's block calls; a compiled block runs evoformer_iteration only when it traces
     ref = load_ref('small', 'fp32', 0)
     features, key, cotangents = features_from(ref), key_of(ref), cotangents_from(ref)
     tapes = model.new_tapes()

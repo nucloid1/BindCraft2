@@ -86,23 +86,50 @@ def extra_msa_stack(p, extra_msa_act: mx.array, pair_act: mx.array, extra_msa_ma
                                         dropout_key=dropout_key, remat=remat, subbatch_size=subbatch_size, is_extra=True, tape=tape)
     return pair
 
-def embeddings_and_evoformer(p, features: dict, prev: dict, cfg: dict, *, dtype, num_block: int | None = None, extra_num_block: int | None = None, dropout_key=None, remat: bool = True,
-                             subbatch_size: int | None = None, template_embedding=None, tapes: dict | None = None) -> dict[str, mx.array]:
-    #EmbeddingsAndEvoformer.__call__. template_embedding, when given, is called as template_embedding(query_pair_act, mask_2d, key) -> (update to the pair activations, extra MSA rows, their mask).
-    #tapes, when given ({'extra_msa_stack': Tape, 'evoformer_iteration': Tape}), are recorded by a forward pass (remat=False) and consumed by a differentiated one (remat=True): evoformer.evoformer_stack
-    tapes = tapes or {}
+@dataclass
+class Front:
+    #the final pass up to the stacks: msa and pair are the only activations that depend on the sequence features (msa_feat, target_feat); the rest are constants of the pass
+    msa: mx.array
+    pair: mx.array
+    msa_mask: mx.array
+    mask_2d: mx.array
+    extra_msa_act: mx.array
+    extra_msa_mask: mx.array
+    rows: mx.array | None  #the template rows the main stack's MSA gets, and their mask
+    rows_mask: mx.array | None
+    extra_key: mx.array | None  #the dropout keys of the extra-MSA stack and the main stack
+    main_key: mx.array | None
+
+def front(p, features: dict, prev: dict, cfg: dict, *, dtype, dropout_key=None, template_embedding=None) -> Front:
+    #the embeddings and the template embedding. template_embedding, when given, is called as template_embedding(query_pair_act, mask_2d, key) -> (update to the pair activations, extra MSA rows, their mask)
     keys = list(mx.random.split(dropout_key, 3)) if dropout_key is not None else [None] * 3
     embedded = embed_inputs(p, features, prev, cfg, dtype)
-    pair, msa, msa_mask = embedded.pair_act, embedded.msa_act, features['msa_mask'].astype(dtype)
+    pair, rows, rows_mask = embedded.pair_act, None, None
     if template_embedding is not None:
         update, rows, rows_mask = template_embedding(pair, embedded.mask_2d, keys[0])
         pair = pair + update
-    pair = extra_msa_stack(p, embedded.extra_msa_act, pair, embedded.extra_msa_mask, embedded.mask_2d, cfg, num_block=extra_num_block, dropout_key=keys[1], remat=remat, subbatch_size=subbatch_size, tape=tapes.get('extra_msa_stack'))
-    sequences = msa.shape[0]
-    if template_embedding is not None:
-        msa, msa_mask = mx.concatenate([msa, rows], axis=0), mx.concatenate([msa_mask, rows_mask], axis=0)
-    msa, pair = evoformer.evoformer_stack(p.scope('evoformer_iteration'), msa, pair, msa_mask, embedded.mask_2d, cfg['evoformer'], num_block=cfg['evoformer_num_block'] if num_block is None else num_block,
-                                          dropout_key=keys[2], remat=remat, subbatch_size=subbatch_size, tape=tapes.get('evoformer_iteration'))
+    return Front(embedded.msa_act, pair, features['msa_mask'].astype(dtype), embedded.mask_2d, embedded.extra_msa_act, embedded.extra_msa_mask, rows, rows_mask, keys[1], keys[2])
+
+def join(f: Front) -> tuple[mx.array, mx.array]:
+    #the main stack's MSA and its mask: the MSA rows, then the template rows
+    if f.rows is None:
+        return f.msa, f.msa_mask
+    return mx.concatenate([f.msa, f.rows], axis=0), mx.concatenate([f.msa_mask, f.rows_mask], axis=0)
+
+def finish(p, msa: mx.array, pair: mx.array, sequences: int) -> dict[str, mx.array]:
+    #the representations after the main stack: the single activations from the first MSA row, the MSA without the template rows, float32
     single = layers.linear(p.scope('single_activations'), msa[0])
     outputs = {'single': single, 'pair': pair, 'msa': msa[:sequences], 'msa_first_row': msa[0]}
     return {name: value.astype(mx.float32) if value.dtype == mx.bfloat16 else value for name, value in outputs.items()}
+
+def embeddings_and_evoformer(p, features: dict, prev: dict, cfg: dict, *, dtype, num_block: int | None = None, extra_num_block: int | None = None, dropout_key=None, remat: bool = True,
+                             subbatch_size: int | None = None, template_embedding=None, tapes: dict | None = None) -> dict[str, mx.array]:
+    #EmbeddingsAndEvoformer.__call__: front, the extra-MSA stack, the main stack, finish.
+    #tapes, when given ({'extra_msa_stack': Tape, 'evoformer_iteration': Tape}), are recorded by a forward pass (remat=False) and consumed by a differentiated one (remat=True): evoformer.evoformer_stack
+    tapes = tapes or {}
+    f = front(p, features, prev, cfg, dtype=dtype, dropout_key=dropout_key, template_embedding=template_embedding)
+    pair = extra_msa_stack(p, f.extra_msa_act, f.pair, f.extra_msa_mask, f.mask_2d, cfg, num_block=extra_num_block, dropout_key=f.extra_key, remat=remat, subbatch_size=subbatch_size, tape=tapes.get('extra_msa_stack'))
+    msa, msa_mask = join(f)
+    msa, pair = evoformer.evoformer_stack(p.scope('evoformer_iteration'), msa, pair, msa_mask, f.mask_2d, cfg['evoformer'], num_block=cfg['evoformer_num_block'] if num_block is None else num_block,
+                                          dropout_key=f.main_key, remat=remat, subbatch_size=subbatch_size, tape=tapes.get('evoformer_iteration'))
+    return finish(p, msa, pair, f.msa.shape[0])

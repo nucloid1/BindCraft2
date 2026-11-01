@@ -59,37 +59,51 @@ class Tape:
         if msa_in.shape != msa_act.shape or pair_in.shape != pair_act.shape or msa_in.dtype != msa_act.dtype or pair_in.dtype != pair_act.dtype:
             raise ValueError(f'the tape was recorded for inputs {tuple(msa_in.shape)}/{tuple(pair_in.shape)} {msa_in.dtype}, not {tuple(msa_act.shape)}/{tuple(pair_act.shape)} {msa_act.dtype}')
 
+class Blocks:
+    #the blocks of one stack for one set of masks and one dropout key: forward() runs block index, backward() recomputes it from its input and differentiates it (the gradients of its input). On the GPU both run
+    #compiled (compiled.py: one compiled forward and one compiled vjp closure per stack, the layer's parameters passed in as arrays; the same arithmetic, fused). MLX runs a compiled function inline, unfused, when
+    #it is called inside another transformation (mx.vjp, mx.grad), so the fused backward needs backward() called directly, as stack_vjp does.
+    def __init__(self, p, msa_act: mx.array, pair_act: mx.array, msa_mask: mx.array, pair_mask: mx.array, cfg: dict, *, num_block: int, dropout_key=None, subbatch_size: int | None = None,
+                 is_extra: bool = False):
+        self.p, self.msa_mask, self.pair_mask, self.cfg, self.is_extra, self.subbatch_size = p, msa_mask, pair_mask, cfg, is_extra, subbatch_size
+        self.keys = list(mx.random.split(dropout_key, num_block)) if dropout_key is not None else [None] * num_block
+        self.functions = compiled.functions_for(p, cfg, msa_act, pair_act, msa_mask, pair_mask, is_extra=is_extra, with_key=dropout_key is not None, subbatch_size=subbatch_size) if compiled.enabled() else None
+
+    def key_of(self, index: int) -> tuple:
+        return (self.keys[index],) if self.keys[index] is not None else ()
+
+    def forward(self, index: int, msa: mx.array, pair: mx.array) -> tuple[mx.array, mx.array]:
+        if self.functions is not None:
+            return tuple(self.functions.forward(compiled.layer_weights(self.p, index, self.functions.spec), msa, pair, self.msa_mask, self.pair_mask, *self.key_of(index)))
+        return evoformer_iteration(self.p.layer(index), msa, pair, self.msa_mask, self.pair_mask, self.cfg, dropout_key=self.keys[index], is_extra=self.is_extra, subbatch_size=self.subbatch_size)
+
+    def backward(self, index: int, msa: mx.array, pair: mx.array, cotangent_msa: mx.array, cotangent_pair: mx.array) -> list[mx.array]:
+        if self.functions is not None:
+            return self.functions.backward(compiled.layer_weights(self.p, index, self.functions.spec), msa, pair, cotangent_msa, cotangent_pair, self.msa_mask, self.pair_mask, *self.key_of(index))
+        return mx.vjp(lambda m, q: list(self.forward(index, m, q)), [msa, pair], [cotangent_msa, cotangent_pair])[1]
+
+    def reverse(self, inputs: list, cotangents, dtypes) -> tuple[mx.array, mx.array]:
+        #the explicit reverse loop: from the cotangents of the stack's outputs to those of its inputs
+        cotangent_msa, cotangent_pair = (cotangent.astype(dtype) for cotangent, dtype in zip(cotangents, dtypes))
+        for index in reversed(range(len(inputs))):
+            cotangent_msa, cotangent_pair = self.backward(index, *inputs[index], cotangent_msa, cotangent_pair)
+        return cotangent_msa, cotangent_pair
+
 def evoformer_stack(p, msa_act: mx.array, pair_act: mx.array, msa_mask: mx.array, pair_mask: mx.array, cfg: dict, *, num_block: int, dropout_key=None, remat: bool = True,
                     subbatch_size: int | None = None, is_extra: bool = False, tape: Tape | None = None) -> tuple[mx.array, mx.array]:
     #p is the scope that holds the stacked tensors (evoformer/evoformer_iteration or evoformer/extra_msa_stack).
     #remat=False: a plain loop over the blocks, which records its block inputs and outputs into tape when one is given.
-    #remat=True: the stack is one custom function whose vjp is an explicit reverse loop: each block is recomputed from its recorded input and differentiated, so no block keeps its activations. The recorded inputs come from
-    #the tape when one is given (the forward pass is then skipped altogether), else from this call's own forward. Gradients flow to msa_act and pair_act ONLY: the masks, the key and the parameters are constants.
-    #On the GPU the blocks run compiled (compiled.py): one compiled forward and one compiled vjp closure per stack, the layer's parameters passed in as arrays; the same arithmetic, fused.
-    keys = list(mx.random.split(dropout_key, num_block)) if dropout_key is not None else [None] * num_block
-    functions = compiled.functions_for(p, cfg, msa_act, pair_act, msa_mask, pair_mask, is_extra=is_extra, with_key=dropout_key is not None, subbatch_size=subbatch_size) if compiled.enabled() else None
-
-    def key_of(index: int) -> tuple:
-        return (keys[index],) if keys[index] is not None else ()
-
-    def block(index: int, msa: mx.array, pair: mx.array) -> tuple[mx.array, mx.array]:
-        if functions is not None:
-            return tuple(functions.forward(compiled.layer_weights(p, index, functions.spec), msa, pair, msa_mask, pair_mask, *key_of(index)))
-        return evoformer_iteration(p.layer(index), msa, pair, msa_mask, pair_mask, cfg, dropout_key=keys[index], is_extra=is_extra, subbatch_size=subbatch_size)
-
-    def block_vjp(index: int, msa: mx.array, pair: mx.array, cotangent_msa: mx.array, cotangent_pair: mx.array) -> list[mx.array]:
-        #the block recomputed from its input and differentiated: the gradients of its input
-        if functions is not None:
-            return functions.backward(compiled.layer_weights(p, index, functions.spec), msa, pair, cotangent_msa, cotangent_pair, msa_mask, pair_mask, *key_of(index))
-        return mx.vjp(lambda m, q: list(block(index, m, q)), [msa, pair], [cotangent_msa, cotangent_pair])[1]
-
+    #remat=True: the stack is one custom function whose vjp is the explicit reverse loop: each block is recomputed from its recorded input and differentiated, so no block keeps its activations. The recorded inputs
+    #come from the tape when one is given (the forward pass is then skipped altogether), else from this call's own forward. Gradients flow to msa_act and pair_act ONLY: the masks, the key and the parameters are
+    #constants. Under an outer mx.vjp the compiled blocks run unfused (see Blocks); the model's vjp calls stack_vjp directly instead.
+    blocks = Blocks(p, msa_act, pair_act, msa_mask, pair_mask, cfg, num_block=num_block, dropout_key=dropout_key, subbatch_size=subbatch_size, is_extra=is_extra)
     if not remat:
         if tape is not None:
             tape.inputs, tape.outputs = [], None
         for index in range(num_block):
             if tape is not None:
                 tape.inputs.append((msa_act, pair_act))
-            msa_act, pair_act = block(index, msa_act, pair_act)
+            msa_act, pair_act = blocks.forward(index, msa_act, pair_act)
         if tape is not None:
             tape.outputs = (msa_act, pair_act)
         return msa_act, pair_act
@@ -104,15 +118,21 @@ def evoformer_stack(p, msa_act: mx.array, pair_act: mx.array, msa_mask: mx.array
         recorded.clear()
         for index in range(num_block):
             recorded.append((msa, pair))
-            msa, pair = block(index, msa, pair)
+            msa, pair = blocks.forward(index, msa, pair)
         return msa, pair
 
     @run.vjp
     def run_vjp(primals, cotangents, outputs):
-        inputs = tape.inputs if tape is not None else recorded
-        cotangent_msa, cotangent_pair = (cotangent.astype(output.dtype) for cotangent, output in zip(cotangents, outputs))
-        for index in reversed(range(num_block)):
-            cotangent_msa, cotangent_pair = block_vjp(index, *inputs[index], cotangent_msa, cotangent_pair)
-        return cotangent_msa, cotangent_pair
+        return blocks.reverse(tape.inputs if tape is not None else recorded, cotangents, [output.dtype for output in outputs])
 
     return run(msa_act, pair_act)
+
+def stack_vjp(p, tape: Tape, cotangents, msa_mask: mx.array, pair_mask: mx.array, cfg: dict, *, dropout_key=None, subbatch_size: int | None = None, is_extra: bool = False) -> tuple[mx.array, mx.array]:
+    #the cotangents of a stack's inputs for cotangents of its outputs, from the block inputs a forward recorded in tape (same masks, key and config as that forward). Call it directly, not under mx.vjp or
+    #mx.grad: then the compiled block vjp closures run fused
+    msa_in, pair_in = tape.inputs[0] if tape.inputs else (None, None)
+    if msa_in is None:
+        raise ValueError('the tape is not a recording of a stack (empty)')
+    tape.check(len(tape.inputs), msa_in, pair_in)
+    blocks = Blocks(p, msa_in, pair_in, msa_mask, pair_mask, cfg, num_block=len(tape.inputs), dropout_key=dropout_key, subbatch_size=subbatch_size, is_extra=is_extra)
+    return blocks.reverse(tape.inputs, cotangents, [output.dtype for output in tape.outputs])

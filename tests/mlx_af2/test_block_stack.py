@@ -6,7 +6,7 @@ import pytest
 
 import cases
 import jax_units
-from bindcraft.af.mlx_af2 import evoformer
+from bindcraft.af.mlx_af2 import compiled, evoformer
 from bindcraft.af.mlx_af2.weights import load_params
 from helpers import assert_live, rel_err
 
@@ -91,6 +91,7 @@ def test_vjp_from_a_tape_equals_the_vjp_without_one(params):
         assert rel_err(np.asarray(got), np.asarray(want)) < 1e-6
 
 def test_a_tape_skips_the_forward_pass_of_the_stack(params, monkeypatch):
+    monkeypatch.setenv(compiled.COMPILE_ENV, '0')  #counts the loop's block calls; a compiled block runs evoformer_iteration only when it traces
     tensors, calls, original = inputs(256, 6), {'blocks': 0}, evoformer.evoformer_iteration
 
     def counting(*args, **kwargs):
@@ -117,3 +118,20 @@ def test_a_tape_that_does_not_belong_to_the_call_is_refused(params):
         gradients(params, MAIN, other, num_block=3, remat=True, tape=tape)  #recorded at 10 residues
     with pytest.raises(ValueError, match='tape'):
         gradients(params, MAIN, tensors, num_block=3, remat=True, tape=evoformer.Tape())  #an empty tape is not a recording
+
+@pytest.mark.parametrize('scope,is_extra,channels', ((MAIN, False, 256), (EXTRA, True, 64)))
+def test_stack_vjp_called_directly_equals_the_gradient_through_the_stack(params, scope, is_extra, channels):
+    #stack_vjp is the reverse loop the model's vjp calls outside any transformation (so the compiled blocks stay fused): it must give what differentiating the stack gives
+    msa, pair, msa_mask, pair_mask = inputs(channels, 9)
+    key = mx.random.key(4)
+    tape = evoformer.Tape()
+    out = stack(params, scope, msa, pair, msa_mask, pair_mask, num_block=2, remat=False, tape=tape, dropout_key=key, is_extra=is_extra)
+    rng = np.random.default_rng(10)
+    cotangents = [mx.array(rng.standard_normal(array.shape).astype(np.float32)) for array in out]
+    want = mx.vjp(lambda m, q: list(stack(params, scope, m, q, msa_mask, pair_mask, num_block=2, remat=True, dropout_key=key, is_extra=is_extra)), [msa, pair], cotangents)[1]
+    got = evoformer.stack_vjp(params.scope(scope), tape, cotangents, msa_mask, pair_mask, config(), dropout_key=key, is_extra=is_extra)
+    for g, w in zip(got, want):
+        assert_live(np.asarray(w))
+        assert rel_err(np.asarray(g), np.asarray(w)) < 1e-6
+    with pytest.raises(ValueError, match='tape'):
+        evoformer.stack_vjp(params.scope(scope), evoformer.Tape(), cotangents, msa_mask, pair_mask, config(), is_extra=is_extra)
