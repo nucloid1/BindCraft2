@@ -53,7 +53,7 @@ Evoformer block rematerialised, which is the one extra forward per step. A desig
 | validation refold set, per validation model: 10 candidates x (complex of 195 + binder alone of 80) | | 45.5 s | 82.5 s | 1.81 | |
 
 A single block only ties metaljax at 150 and 250 residues; the end-to-end gain comes from elsewhere, and there is probably more to take (`HANDOFF.md`, speed headroom). Peak memory is MLX's own for the worker (the GPU's
-buffers included); metaljax's peak is not reported because its process RSS (4 to 5 GiB here) does not include them, and it hit its own memory governor at 400 residues for a design step. The refold-set row is built from the
+buffers included); metaljax's peak is not reported because its process RSS (4 to 5 GiB here) does not include them. The refold-set row is built from the
 two forward timings (the full pipeline's measured post-trajectory phase, validation and ProteinMPNN and filters together, was 73 s). Sources: `checkpoints.md`, `e2e.md`, `e2e_results/`; scripts `bench_block.py`,
 `bench_grad.py`, `bench_forward.py`, `e2e_compare.py` in `scripts/mlx_af2/`.
 

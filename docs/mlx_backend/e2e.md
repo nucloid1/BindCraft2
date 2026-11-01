@@ -18,7 +18,7 @@ what is compared is the machinery and the distributions, not the quality of a fi
 
 **Speed.** MLX is 1.28x faster per gradient round at 195 residues, and the ranges are disjoint. The figure does not move with the length of the trajectory (15 rounds or 38), so compile time is not what is measured; the
 two trajectories that went on to the mutate stage (the slowest of each backend) carry that stage's time in their total, and on the screen-only trajectories alone the ratio is 8.79 s against 6.89 s, also 1.28x. It
-agrees with the whole-step benchmark (1.26x at 250 residues, `checkpoints.md`) and is smaller than the 1.53x at 400 residues, as the memory-bound metaljax path loses more there. Total design time is not a fair comparison
+agrees with the whole-step benchmark (1.26x at 250 residues, `checkpoints.md`) and is smaller than the 1.53x at 400 residues (the ratio grows with length; why metaljax loses more there was not isolated, `checkpoints.md`). Total design time is not a fair comparison
 here, because the stage thresholds stop trajectories at different stages.
 
 **Outcomes.** The ranges of ipTM, pLDDT and loss overlap (on 44%, 80% and 53% of their union). bf16 trajectories are noisy and seeds do not pair across backends, so the check is distributional and nothing more is claimed:
