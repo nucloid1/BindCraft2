@@ -240,8 +240,8 @@ def test_worker_killed_during_gradients_names_the_cause_and_stops(small):
     assert gradients
 
 def test_unimplemented_family_is_refused_by_name():
-    with pytest.raises(ValueError, match='model_1_ptm'):
-        cases.build_model(Fp32MlxModel, models=('model_1_ptm',))
+    with pytest.raises(ValueError, match=r"'model_1'"):
+        cases.build_model(Fp32MlxModel, models=('model_1',))  #a monomer model without a predicted-aligned-error head; the pTM monomer models are implemented
 
 def test_memory_failures_do_not_trigger_the_jax_ladder():
     remote = RemoteModel('/unused', cap_gib=36.0, dtype='fp32')

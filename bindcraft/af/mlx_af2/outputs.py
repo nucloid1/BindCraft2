@@ -18,3 +18,9 @@ def nest(flat: dict) -> dict:
             node = node.setdefault(parent, {})
         node[leaf] = value
     return nested
+
+def model_family(model_name: str) -> str | None:
+    #the families the MLX backend implements: the AlphaFold-Multimer models, and the monomer models with a predicted-aligned-error head (the pTM ones); anything else is None
+    if 'multimer' in model_name:
+        return 'multimer'
+    return 'monomer' if model_name.endswith('_ptm') else None

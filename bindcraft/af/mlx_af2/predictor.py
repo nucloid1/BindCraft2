@@ -19,6 +19,7 @@ import jax.numpy as jnp
 
 from bindcraft.af.alphafold.model import config as af_config
 from bindcraft.af.mlx_af2 import bridge, gpu_lock, preflight
+from bindcraft.af.mlx_af2.outputs import model_family
 from bindcraft.af.mlx_af2.worker import DEVICE_ENV, RemoteModel
 from bindcraft.af2 import AlphaFoldDesignModel
 
@@ -58,8 +59,8 @@ class MlxAlphaFoldDesignModel(AlphaFoldDesignModel):
         return config.model.to_dict()
 
     def _load_parameters(self, model_name: str, data_dir: str | None) -> object:
-        if 'multimer' not in model_name:
-            raise ValueError(f'the MLX backend implements the AlphaFold-Multimer models only so far, not {model_name!r}; use a multimer model or leave BINDCRAFT_BACKEND unset (jax)')
+        if model_family(model_name) is None:
+            raise ValueError(f'the MLX backend implements the AlphaFold-Multimer models and the monomer pTM models, not {model_name!r}; use one of those or leave BINDCRAFT_BACKEND unset (jax)')
         if not data_dir:
             raise ValueError(f'no AlphaFold parameters for {model_name!r} in data_dir {data_dir!r}; run "bindcraft fetch-weights" to download them')
         start_session()

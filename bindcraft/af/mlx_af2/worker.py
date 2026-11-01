@@ -94,6 +94,8 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
 
     from bindcraft.af.mlx_af2.guard import memory_guard
     from bindcraft.af.mlx_af2.model_multimer import MultimerModel
+    from bindcraft.af.mlx_af2.monomer import MonomerModel
+    from bindcraft.af.mlx_af2.outputs import model_family
     from bindcraft.af.mlx_af2.weights import load_params, parameter_file
 
     device = os.environ.get(DEVICE_ENV, 'gpu')
@@ -121,7 +123,8 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
                 registry[resident.pop(0)]['model'] = None  #released; read again if it is used again
                 mx.clear_cache()
             if entry['model'] is None:
-                entry['model'] = MultimerModel(entry['name'], load_params(entry['name'], params_dir, dtype), entry['cfg'], dtype)
+                model_class = MultimerModel if model_family(entry['name']) == 'multimer' else MonomerModel
+                entry['model'] = model_class(entry['name'], load_params(entry['name'], params_dir, dtype), entry['cfg'], dtype)
             return entry['model']
 
         while True:
@@ -135,8 +138,8 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
                 start = time.perf_counter()
                 if kind == 'load':
                     name = request['name']
-                    if 'multimer' not in name:
-                        raise ValueError(f'the MLX backend does not implement the model family of {name!r} yet')
+                    if model_family(name) is None:
+                        raise ValueError(f'the MLX backend does not implement the model family of {name!r}: it runs the multimer models and the monomer pTM models')
                     parameter_file(name, params_dir)  #refuses a model with no weights, by name, now rather than on first use
                     handle = next((h for h, entry in registry.items() if entry['name'] == name and entry['cfg'] == request['cfg']), None)
                     if handle is None:

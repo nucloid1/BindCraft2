@@ -5,7 +5,8 @@
 import mlx.core as mx
 
 from bindcraft.af.alphafold.common import residue_constants
-from bindcraft.af.mlx_af2 import all_atom, embeddings, evoformer, layers, pair_ops
+from bindcraft.af.mlx_af2 import all_atom, embeddings, evoformer, heads, layers, monomer_structure, pair_ops
+from bindcraft.af.mlx_af2.model_multimer import MultimerModel
 
 def uses_templates(cfg: dict) -> bool:
     return bool(cfg['embeddings_and_evoformer']['template']['enabled'])
@@ -129,18 +130,33 @@ def embeddings_and_evoformer(p, features: dict, prev: dict, cfg: dict, *, dtype,
     outputs = {'single': layers.linear(p.scope('single_activations'), msa[0]), 'pair': pair, 'msa': msa[:features['msa_feat'].shape[0]], 'msa_first_row': msa[0]}
     return {name: value.astype(mx.float32) if value.dtype == mx.bfloat16 else value for name, value in outputs.items()}
 
-class MonomerModel:
+class MonomerModel(MultimerModel):
+    #the monomer family, forward only (validation): the recycling and forward logic of the multimer model around this family's trunk, structure module and the shared heads.
     #cfg is the effective model config (config.model_config(name).model as a dict, with the parent's overrides applied)
     def __init__(self, model_name: str, params, cfg: dict, dtype=None):
         check_supported(cfg)
-        self.model_name, self.params, self.cfg = model_name, params, cfg
-        self.dtype = dtype if dtype is not None else (mx.bfloat16 if cfg['global_config']['bfloat16'] else mx.float32)
-
-    def zero_prev(self, features: dict) -> dict:
-        length = features['aatype'].shape[0]
-        embedding = self.cfg['embeddings_and_evoformer']
-        return {'prev_msa_first_row': mx.zeros((length, embedding['msa_channel'])), 'prev_pair': mx.zeros((length, length, embedding['pair_channel'])), 'prev_pos': mx.zeros((length, 37, 3))}
+        super().__init__(model_name, params, cfg, dtype)
 
     def trunk(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True) -> dict[str, mx.array]:
         return embeddings_and_evoformer(self.params.scope('evoformer'), features, prev, self.cfg['embeddings_and_evoformer'], dtype=self.dtype, zero_init=self.cfg['global_config']['zero_init'],
                                         dropout_key=dropout_key, remat=remat, subbatch_size=subbatch_size)
+
+    def single_pass(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True) -> tuple[dict, dict]:
+        #one AlphaFoldIteration: returns the nested outputs and the state the next pass starts from
+        if 'initial_atom_pos' in features:
+            raise NotImplementedError('initial_atom_pos: the large-complex initialisation is not ported for the monomer models (the repo builds them for validation, without it)')
+        cfg, p = self.cfg, self.params
+        keys = list(mx.random.split(dropout_key, 2)) if dropout_key is not None else [None, None]
+        representations = self.trunk(features, prev, keys[0], subbatch_size=subbatch_size, remat=remat)
+        sm = monomer_structure.structure_module(p.scope('structure_module'), representations, features, cfg['heads']['structure_module'], dropout_key=keys[1])
+        representations['structure_module'] = sm['act']
+        h = cfg['heads']
+        outputs = {'structure_module': {'final_atom_positions': sm['final_atom_positions'], 'final_atom_mask': sm['final_atom_mask']},
+                   'predicted_lddt': heads.predicted_lddt(p.scope('predicted_lddt_head'), representations, h['predicted_lddt']),
+                   'predicted_aligned_error': heads.predicted_aligned_error(p.scope('predicted_aligned_error_head'), representations, h['predicted_aligned_error']),
+                   'distogram': heads.distogram(p.scope('distogram_head'), representations, h['distogram']),
+                   'experimentally_resolved': heads.experimentally_resolved(p.scope('experimentally_resolved_head'), representations, h['experimentally_resolved'])}
+        return outputs, {'prev_pos': sm['final_atom_positions'], 'prev_msa_first_row': representations['msa_first_row'], 'prev_pair': representations['pair']}
+
+    def vjp(self, *arguments, **keywords):
+        raise NotImplementedError(f'{self.model_name}: the MLX backend has no gradient for the monomer models (they only validate designs); design with a multimer model')

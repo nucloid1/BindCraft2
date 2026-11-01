@@ -75,8 +75,8 @@ def test_loading_a_model_without_weights_names_the_model(remote):
 
 @pytest.mark.integration
 def test_an_unimplemented_family_is_refused_by_name(remote):
-    with pytest.raises(WorkerError, match=r"(?s)does not implement.*model_1_ptm"):
-        remote.load('model_1_ptm', model_config())
+    with pytest.raises(WorkerError, match=r"(?s)does not implement.*model_1\b"):
+        remote.load('model_1', model_config())  #the monomer models without a predicted-aligned-error head; the pTM ones are implemented
 
 @pytest.mark.integration
 def test_forward_with_an_unknown_handle_names_the_handle(remote):
@@ -166,3 +166,20 @@ def test_the_payload_of_a_call_is_small_at_300_residues():
                 'sym_id': np.zeros(n, np.int32), 'seq_mask': np.ones(n, np.float32), 'msa_mask': np.ones((1, n), np.float32), 'target_feat': np.zeros((n, 20), np.float32), 'msa_feat': np.zeros((1, n, 49), np.float32),
                 'all_atom_positions': np.zeros((n, 37, 3), np.float32), 'all_atom_mask': np.zeros((n, 37), np.float32), 'template_all_atom_positions': np.zeros((1, n, 37, 3), np.float32)}
     assert payload_bytes(features) < 16e6  #the pair-sized logits come back, but the call carries only residue-sized features and the offsets (the 300 x 300 prev is not sent)
+
+@pytest.mark.integration
+def test_the_worker_runs_a_monomer_model_forward_only(remote):
+    #a pTM monomer model through the real worker process: the same outputs as in-process, and a gradient request is refused by name (the monomer models only validate)
+    from bindcraft.af.mlx_af2 import monomer
+    ref = load_ref('small', 'fp32__model_1_ptm', 1)
+    features = crop(ref, 30, 42)
+    key = np.asarray(ref['meta']['key'], np.uint32)
+    cfg = jax_units.configs('model_1_ptm')[0].to_dict()
+    handle = remote.load('model_1_ptm', cfg)
+    got, call_id = remote.forward(handle, key, features, 0, None)
+    want, _ = monomer.MonomerModel('model_1_ptm', load_params('model_1_ptm', cases.params_path(), dtype=mx.float32), cfg, mx.float32).forward({name: mx.array(value) for name, value in features.items()}, mx.array(key), 0)
+    assert set(got) == set(OUTPUT_KEYS)
+    for name in OUTPUT_KEYS:
+        assert got[name].shape == tuple(want[name].shape) and rel_err(got[name], np.asarray(want[name])) < 1e-5, name
+    with pytest.raises(WorkerError, match=r"(?s)model_1_ptm.*no gradient"):
+        remote.vjp(handle, call_id, key, features, 0, None, {'distogram/logits': np.ones((12, 12, 64), np.float32)}, ('msa_feat',))
