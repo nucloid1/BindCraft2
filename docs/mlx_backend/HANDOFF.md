@@ -8,7 +8,9 @@ decision taken on the way.
 
 - Repo `~/BindCraft2`, branch **`mlx-backend`**, local only: **nothing has been pushed**. It carries the user's Metal fork (`bf5e0cc`, branch `apple-silicon-metal`, left untouched and still 147 commits behind upstream: whether to update it
   is an open question) and a merge of upstream (`205fe64`, upstream `main` at `b6fb3ae`; backup branch `backup/mlx-backend-before-upstream-merge`; local `main` was fast-forwarded to upstream). The MLX work is 36 commits on top, listed below.
-- The executor's ledger (one line per task, every ruling, every finding) is `.superpowers/sdd/2026-10-30-mlx-alphafold-backend/progress.md`. It is git-ignored scratch: if it is gone, this file and `git log` are the record.
+- The executor's ledger (one line per task, every ruling, every finding) is `.superpowers/sdd/2026-10-30-mlx-alphafold-backend/progress.md`; the speed work (2026-11-01, plan `docs/superpowers/plans/2026-11-01-mlx-speed-work.md`) has its own,
+  `.superpowers/sdd/2026-11-01-mlx-speed-work/progress.md`. Both are git-ignored scratch: if they are gone, this file and `git log` are the record.
+- On 2026-11-01 Ethan said "build the speed work" and "and merge to main": after the speed work, both suites and its review, `mlx-backend` was fast-forwarded into local `main` (still nothing pushed).
 - Memory notes for the assistant are in `~/.claude/projects/-Users-ethanputnam-Bindcraft-Hunter/memory/` (`bindcraft2-mlx-backend.md`).
 
 ## What is established
@@ -16,8 +18,10 @@ decision taken on the way.
 - **Design** (AlphaFold-Multimer, forward and gradient) and **validation** (multimer or pTM monomer, forward only) run through MLX on the Apple GPU; fp32 agrees with the vendored JAX modules to 1e-7..1e-5 per stage and with the captured seam
   references of the real model (single trajectory inputs, outputs, cotangents and gradients) to 1e-3 or better on live residues; the gradient cosine against `jax.vjp` is 0.9999 or better, with one documented exception (a chaotic fp32 state, `checkpoints.md`).
 - **Real campaigns run end to end** on the backend (design stages, ProteinMPNN, validation, filters), including `hard_target` and the desperation ladder; a killed worker stops the run nonzero with the cause named; with `BINDCRAFT_BACKEND` unset the JAX path is untouched and no MLX module is imported.
-- **Against metaljax** (M3 Max, bf16, warm): 1.28x per gradient round of real trajectories, 1.6x to 2.2x per forward, 1.3x to 1.5x per design step; outcome distributions over five seeds overlap (`e2e.md`). The CPU-side JAX work is about 0.2% of a gradient round: the plan's phase-2 trigger (port it if above 20%) is not met.
-- Verification: the whole suite on a clean tree, `BINDCRAFT_MLX_INTEGRATION=1 BINDCRAFT_MLX_MIN_FREE_GB=20 JAX_PLATFORMS=cpu pytest tests/mlx_af2 -q`: **249 passed in 55:31**, no failures, skips or xfails (2026-11-01, at `a582405`; the fp32 chaotic-gradient case is an xfail only in GPU test mode, a documented finding of the shipped model, `checkpoints.md`).
+- **Against metaljax** (M3 Max, bf16, warm), after the speed work: 1.98x per gradient round of real trajectories (4.48 against 8.87 s at 195 residues; 1.28x before it), 1.8x to 3.0x per forward, 2.0x per design step at 250 residues and 2.9x at 400; outcome distributions over five seeds overlap, and the speed work left every trajectory identical (`e2e.md`). The CPU-side JAX work is about 0.2% of a gradient round: the plan's phase-2 trigger (port it if above 20%) is not met.
+- Verification of the speed work: the default suite `BINDCRAFT_MLX_INTEGRATION=1 BINDCRAFT_MLX_MIN_FREE_GB=20 JAX_PLATFORMS=cpu pytest tests/mlx_af2 -q` **289 passed in 57:40** at `4fe248c`, and in GPU mode
+  (`BINDCRAFT_MLX_TEST_DEVICE=gpu`) **281 passed, 9 skipped, 1 xfailed** in 14:42 at `15d56f6` (which adds two review tests); the xfail is the documented fp32 chaotic-gradient case.
+- Verification before the speed work: the whole suite on a clean tree, `BINDCRAFT_MLX_INTEGRATION=1 BINDCRAFT_MLX_MIN_FREE_GB=20 JAX_PLATFORMS=cpu pytest tests/mlx_af2 -q`: **249 passed in 55:31**, no failures, skips or xfails (2026-11-01, at `a582405`; the fp32 chaotic-gradient case is an xfail only in GPU test mode, a documented finding of the shipped model, `checkpoints.md`).
 
 ## What is NOT established
 
@@ -41,9 +45,15 @@ the Neural Engine dropped after a measured spike (the GPU was 1.5x to 2.8x faste
 the disk rule (below 90% before a real-model run) is never loosened by default, and on 2026-10-31 he said "its fine, don't worry about memory" about the 95-97% disk, so runs used the explicit opt-in `BINDCRAFT_MLX_MIN_FREE_GB=20`; and he said "drop it"
 about the preflight's rule that refused to start while another process held more than 8 GB (removed). Standing: never modify `~/RFD4-Proteina`; one GPU run at a time through the shared lock.
 
-## Speed headroom: investigated 2026-11-01, nothing built
+## Speed work: built 2026-11-01
 
-The investigation Ethan asked for is in `checkpoints.md` ("Speed headroom: what the investigation found"). Short version: the end-to-end gain comes from metaljax's cost for the same blocks inside the whole-model graph (60 to 80% more than its ops alone), not from MLX's ops, which tie or trail; the 400-residue vjp anomaly and the 1.75x design-step ratio were measurement artifacts (corrected to 1.26x at 250 and 1.53x at 400 residues). The two things worth building, together, are compiled per-block vjp closures in an explicit reverse loop (block forward + backward -22% to -26%, forward -26% to -32%, gradients identical in the probe) and keeping the design forward call's block inputs so the vjp does not repeat the final pass (22 to 27% of the vjp); projected, not measured, and an upper bound (the in-place block cost at 400 residues is above the isolated one), about 2.0x and 2.8x against metaljax instead of 1.26x and 1.53x. Decision for Ethan: build them or not. Probes: `scripts/mlx_af2/experiments/`.
+Ethan asked for the speed headroom to be investigated (`checkpoints.md`, "Speed headroom: what the investigation found"), then said "build the speed work". Built, with the numerics unchanged (`checkpoints.md`, "Speed work"):
+compiled Evoformer blocks on the GPU (`compiled.py`: one compiled forward and one compiled vjp closure per stack, the layer's parameters passed in as arrays, one trace per shape; `BINDCRAFT_MLX_COMPILE=0` turns it off);
+the model's vjp as an explicit chain run outside any MLX transformation (MLX runs a compiled function inline and unfused under `mx.vjp`: measured), with each Evoformer stack differentiated by a reverse loop
+(`evoformer.stack_vjp`); tapes, so the vjp after a design forward skips the final pass's Evoformer forward (kept per call by the worker under `BINDCRAFT_MLX_TAPE_GIB`, default a fifth of the cap); and an allocator
+cache of a quarter of the cap instead of 2 GiB. Results: design step 9.9 -> 6.2 s at 250 residues and 35.3 -> 18.8 s at 400; a real trajectory's gradient round 6.92 -> 4.48 s (1.98x faster than metaljax); every
+trajectory identical. A fresh review (model `fable`) found no Critical issue; its Important test gap was fixed, one Important finding was re-graded Minor with a ruling, the rest are deferred minors below.
+On the way, four existing test assertions turned out never to run (`assert_live(a) and rel_err(...) < tol` short-circuits on `None`); they were fixed first and pass.
 
 ## How to run things
 
@@ -53,15 +63,16 @@ BINDCRAFT_MLX_INTEGRATION=1 JAX_PLATFORMS=cpu .venv/bin/python -m pytest tests/m
 BINDCRAFT_MLX_INTEGRATION=1 BINDCRAFT_MLX_TEST_DEVICE=gpu JAX_PLATFORMS=cpu .venv/bin/python -m pytest tests/mlx_af2 -q   # every test on the GPU (an accuracy run on the real device)
 JAX_PLATFORMS=cpu .venv/bin/python scripts/mlx_af2/capture_refs.py [--monomer] [--bf16-ensemble --strict-rounding] [--noise-floor]   # the references the tests are judged against, into ~/.cache/bindcraft_mlx_refs
 .venv/bin/python scripts/mlx_af2/e2e_compare.py --compare --seeds 5 ; scripts/mlx_af2/bench_{block,grad,forward}.py     # the benchmarks
+TREE=<a tree> PYTHONPATH=<the same tree> .venv/bin/python scripts/mlx_af2/experiments/before_after.py   # the speed work's before/after measurement, the same code against any tree
 ```
 
-A whole-suite run takes 55 minutes on the CPU device (55:31 at the final run) and about 13 in GPU mode. The disk was 95 to 97% full throughout: runs used `BINDCRAFT_MLX_MIN_FREE_GB=20`, and a watchdog killed nothing. `task-done` records a trailing worker-exit `BrokenPipeError` instead of the result on some runs:
+A whole-suite run takes about 58 minutes on the CPU device (57:40 at the last run) and about 15 in GPU mode (14:42). The disk was 95 to 97% full throughout: runs used `BINDCRAFT_MLX_MIN_FREE_GB=20`, and a watchdog killed nothing. `task-done` records a trailing worker-exit `BrokenPipeError` instead of the result on some runs:
 correct the ledger line by hand. zsh does not word-split an unquoted variable: put loops in a bash script file.
 
 ## Map
 
-`bindcraft/af/mlx_af2/`: `weights.py` (npz loader, fusing of the triangle projections), `layers.py`, `pair_ops.py`, `msa_ops.py`, `evoformer.py`, `embeddings.py`, `templates.py`, `geometry.py`, `all_atom.py`, `structure.py` (multimer),
-`heads.py`, `model_multimer.py` (recycling, forward, vjp), `monomer.py` and `monomer_structure.py` (pTM family), `outputs.py`, `bridge.py` (the `custom_vjp` over `pure_callback`), `worker.py` (process, shared memory, call ids, deadline), `guard.py`, `gpu_lock.py`,
+`bindcraft/af/mlx_af2/`: `weights.py` (npz loader, fusing of the triangle projections), `layers.py`, `pair_ops.py`, `msa_ops.py`, `evoformer.py` (blocks, stacks, tapes, `stack_vjp`), `compiled.py` (compiled blocks), `embeddings.py` (front, join, finish), `templates.py`, `geometry.py`, `all_atom.py`, `structure.py` (multimer),
+`heads.py`, `model_multimer.py` (recycling, forward, the vjp chain), `monomer.py` and `monomer_structure.py` (pTM family), `outputs.py`, `bridge.py` (the `custom_vjp` over `pure_callback`), `worker.py` (process, shared memory, call ids, tapes and their budget, allocator cache, deadline), `guard.py`, `gpu_lock.py`,
 `preflight.py` (disk only), `predictor.py` (`MlxAlphaFoldDesignModel`). `bindcraft/backend.py`, small hooks in `bindcraft/af2.py` (three) and `bindcraft/__init__.py` (the parent's JAX on the CPU). `tests/mlx_af2/`, `scripts/mlx_af2/`, `docs/mlx_backend/`.
 
 ## Rulings made during execution (verbatim from the ledger, in order)
@@ -119,7 +130,45 @@ correct the ledger line by hand. zsh does not word-split an unquoted variable: p
 - worker.untrack uses the private SharedMemory._name (bare except degrades it to resource-tracker warnings); SharedMemory(track=False) is the supported API on this Python.
 - RemoteModel.read_outputs updates last_shm_names and last_seconds outside self.lock (bookkeeping only; bridge.REMOTE_CALLS serialises in practice).
 
+## Rulings of the speed work (verbatim from its ledger, in order)
+
+- Setup: Ruling: executing inline on branch mlx-backend (HEAD ff897cc at start), after Ethan's "build the speed work" and "and merge to main" (2026-11-01) — the merge is a local fast-forward of main after both suites and a fresh review, not before — cost if wrong: none, nothing pushed.
+- Setup: Ruling: the stack functions evoformer_stack keeps its signature; the monomer's forward-only call (monomer.py:128) shares it, so a compiled forward reaches the monomer validation passes too — measured in Task S4, not assumed — cost if wrong: a monomer parity or speed regression found by the GPU-mode suite.
+- Task S1: Ruling: remat=True keeps its name and now means the explicit reverse loop (no mx.checkpoint); remat=False stays the plain loop and records a tape when given one — the monomer's forward-only call is unchanged — cost if wrong: none, both paths are gradient-tested against plain autodiff.
+- Task S2: Ruling: test_compiled.py's CPU tests were written before compiled.py but first run after it existed, so they were never seen RED; covered instead by mutation controls: kill switch ignored, compile on every device, has() always true — caught; 'ArrayParams ignores the dtype' survived and is equivalent (every parameter name is read in one dtype), its non-equivalent form (always the default dtype) is caught by the bf16 cases added for it — cost if wrong: a dtype bug in ArrayParams that only shows on the GPU path would be caught by the gpu-marked equality tests.
+- Task S2: Ruling: BINDCRAFT_MLX_COMPILE=0 is the only switch (no force-on for the CPU: MLX's CPU compile runs a C++ compiler, ~3 s per kernel) — cost if wrong: none.
+- Task S3: Ruling: tape budget BINDCRAFT_MLX_TAPE_GIB, default 0.2 x cap (8 GiB without a cap), oldest dropped first; tapes released after the vjp that used them (JAX calls a forward's backward once) — an added knob, needed to bound memory when several states' forwards precede their vjps — cost if wrong: a too-small budget only costs speed (misses recompute).
+- Task S3: Ruling: the vjp cache hit also requires equal feature shapes (stronger than before, for the recycle state too) — cost if wrong: none.
+- Task S3: Ruling: the monomer's single_pass takes tapes= and refuses a non-None one by name (validation models have no gradient); the worker only makes tapes for the multimer family — cost if wrong: none.
+- Task S3: Ruling: test_vjp_final_pass_uses_the_dropout_key_the_forwards_final_pass_used spied on single_pass, which the vjp's final pass no longer calls; rewritten to read the keys at embeddings.front and heads_of (both paths call them), keeping its three assertions per stage (two passes with keys, distinct per pass, vjp == forward); mutation 'final pass given the recycle key' caught — cost if wrong: none, the dropout oracle and the hit/miss dropout tests also pin it.
+- Task S2: Ruling: the stack-level trace test now measures the direct path (taped forward + stack_vjp) at shapes no other test in the module uses; evoformer_stack(remat=True) under mx.vjp is inline by construction and stays correct (equality tests) — cost if wrong: none.
+- Task S4: lead C confirmed on the new code (alternating, 2 rounds): 400-residue vjp 12.83 s (2 GiB cache) / 11.59 (4) / 11.21-11.25 (9) / 11.21 (unbounded, grows to 16.2 GiB). Ruling: the worker's allocator cache becomes 0.25 x cap (9 GiB at the default 36 GiB cap) via allocator_cache_gib (test RED -> GREEN); safety run: cap 16 GiB at 400 residues, 3 steps, no guard kill, active+cache peak 12.36 GiB; cap 36: peak 15.69 GiB, step 18.7 s (was 21.7) — cost if wrong: up to a quarter of the cap held as cache; MLX releases it before 0.9 x cap, measured.
+- Final: Ruling: I1 (the tape budget bounds the tapes held between calls, not what one forward allocates) re-graded Minor — its proposed fix (evict before the forward too) is a no-op, because the held tapes are already within the budget whenever a forward starts; the memory peak is the vjp's, where the tape replaces the block-input storage the old remat path kept anyway (worker peak measured unchanged at 250 and 400 residues); in BindCraft's usual two states (the complex and the binder alone) the extra held tape during the other state's vjp is the complex's own, which its vjp needs — cost if wrong: a campaign with two LARGE states near the memory cap holds up to 0.2 x cap more than before during the other state's vjp and could hit the limit where it used to fit; deferred improvement: estimate the incoming tape from the feature shapes and evict room for it, or drop other calls' tapes when free memory is short.
+
+## Deferred minors of the speed work (from its review)
+
+- M1 evoformer_stack(remat=True, tape=) returns the tape's outputs after a shape-only check, so two same-length calls with different sequences would share a forward; reached only from tests (the model's vjp uses stack_vjp) — a trap for a future caller.
+- M2 ArrayParams.has answers from the spec discovered on the first model of a stack config; a model with an optional tensor (a bias) the first one lacked would run without it; unreachable for the five multimer models (identical parameter sets).
+- M3 the per-layer weight slices cached for the compiled blocks are copies beside the stacked originals: about +150 MB per resident model in bf16 (up to 5 models).
+- M4 the compiled functions and MLX's per-shape traces are never evicted; a campaign sampling many lengths accumulates ~4 traces per new length (~0.03 s each); their memory is unmeasured.
+- M5 test_the_models_vjp_runs_the_compiled_blocks_outside_any_transformation passes vacuously when BINDCRAFT_MLX_COMPILE=0 is set in the environment (it should force compile on and assert the first vjp traced).
+- M6 on a tape miss the front (embeddings, templates) is computed twice (the forward's inputs, then inside its mx.vjp).
+- M7 the reverse loop keeps every block input to the end; on a miss, releasing each as it is used would halve the loop's resident tape.
+- M8 a vjp that raises leaves its call's tapes held until MAX_CALLS or the budget evicts them (the campaign is over at that point anyway).
+
 ## The MLX work, commit by commit
+
+Speed work (2026-11-01), newest first:
+
+- `15d56f6 tests: the model refuses a tape from another call; a reused call id never hits its tape`
+- `4fe248c worker: allocator cache a quarter of the memory cap (was 2 GiB)`
+- `af21d0b vjp: the final pass's backward as a chain outside any transformation`
+- `a4d26bf tapes across the design forward and its vjp: model, bridge, worker`
+- `cf28c34 stacks: explicit reverse loop with tapes; compiled blocks on the GPU`
+- `d81422a tests: four assertions that never ran (assert_live(...) and comparison short-circuits on None)`
+- `616c235 plan: MLX speed work (compiled block closures, explicit reverse loop, forward tape)`
+
+The backend itself:
 
 - `2440cc5 docs: fix call numbering in the design`
 - `449b0b5 docs: phase-2 trigger for porting the CPU-side JAX, measured at Task 3 and Task 20`

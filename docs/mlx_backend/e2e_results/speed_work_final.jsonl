@@ -1,0 +1,7 @@
+{"tree": "BindCraft2", "retain": true, "kind": "design", "residues": 250, "forward_s": 2.527, "vjp_s": 3.655, "step_s": 6.182, "first_forward_s": 2.721, "first_vjp_s": 3.754, "worker_peak_gib": 6.8, "tape_hits": 4, "tape_misses": 0}
+{"tree": "BindCraft2", "retain": true, "kind": "design", "residues": 400, "forward_s": 7.486, "vjp_s": 11.351, "step_s": 18.837, "first_forward_s": 7.495, "first_vjp_s": 11.296, "worker_peak_gib": 16.64, "tape_hits": 8, "tape_misses": 0}
+{"tree": "BindCraft2", "retain": true, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 2.548, "worker_peak_gib": 16.64}
+{"tree": "BindCraft2", "retain": true, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 7.839, "worker_peak_gib": 16.64}
+{"tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 0.669, "worker_peak_gib": 16.64}
+{"tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 3.195, "worker_peak_gib": 16.64}
+{"tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 6.27, "worker_peak_gib": 16.64}

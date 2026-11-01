@@ -140,6 +140,35 @@ MLX's blocks cost the same in the model as alone; metaljax's cost 60% more in th
 - **D. Exact-variance layer norms (the open decision below).** Replacing the triangle multiplication's fast-variance chain with `mx.fast.layer_norm` speeds the uncompiled op by 10% (250) and 13% (400) forward + backward, but a compiled fast-variance forward (3.37 ms at 250) already beats the uncompiled exact one (4.57 ms), so with A the speed argument for exact variance disappears and only the accuracy argument remains.
 - **Ruled out:** the attention chunk size; writing the triangle multiplication's einsum as channel-major matmuls (identical, 4.82 against 4.83 ms; MLX's einsum already does that); the structure module and heads; the Neural Engine; softmax precision. **Not tested:** `mx.fast.scaled_dot_product_attention` for the triangle and MSA attentions (its MLX vjp is unfused, and attention already ties metaljax per op).
 
+### Speed work: built 2026-11-01 (Ethan: "build the speed work")
+
+Items A and B above, plus C, are built (plan `docs/superpowers/plans/2026-11-01-mlx-speed-work.md`). Numerics are unchanged: compiled and uncompiled agree (fp32 within 1e-5, bf16 within one bf16 ulp, gradients bitwise equal in the probe), and the model's vjp equals the previous whole-graph vjp to 1e-6 in fp32 with dropout on and off.
+
+What was built:
+- **Compiled blocks** (`compiled.py`): on the GPU every Evoformer block runs as one compiled forward and, in the backward, one compiled vjp closure. The block's 85 parameter tensors are passed in as a list, so the 48 layers share one trace per shape (a new shape costs about 0.03 s; the cold start of a worker about 1 to 2 s once). `BINDCRAFT_MLX_COMPILE=0` turns it off; on the CPU it is off (MLX builds fused CPU kernels with a C++ compiler, seconds per kernel).
+- **An explicit backward chain.** MLX runs a compiled function INLINE, unfused and retraced on every call, when it is called inside another transformation: a compiled block vjp took 64.5 ms called directly and 84.5 ms (85.0 uncompiled) from a custom function's vjp under `mx.vjp`. So `MultimerModel.vjp` no longer differentiates the whole final pass with one `mx.vjp`: it is `mx.vjp` of the tail (single activations, structure module, heads), the main stack's reverse loop (`evoformer.stack_vjp`, called directly), the extra-MSA stack's, then `mx.vjp` of the front (embeddings, templates). Each block is recomputed from its input in the reverse loop, as remat did.
+- **Tapes.** The design forward call (the bridge's custom_vjp forward rule asks for it) keeps each block's input; the worker holds them with the call's recycle state under a byte budget (`BINDCRAFT_MLX_TAPE_GIB`, default a fifth of the cap, oldest dropped first) and releases them after the vjp. The vjp then skips the final pass's Evoformer forward. A vjp whose tapes are gone recomputes them; plain forwards (validation, prediction) and the monomer models keep none.
+- **Allocator cache** a quarter of the worker's cap (was 2 GiB): at 400 residues the vjp took 12.83 s with 2 GiB, 11.59 s with 4, 11.21 s with 9 and the same unbounded (which grew to 16 GiB). With a 16 GiB cap the 400-residue step still ran without a guard kill (active plus cached peak 12.4 GiB): MLX releases cached buffers before its own limit, 0.9 of the cap.
+
+Before and after, through the real worker, bf16, two alternating rounds per tree (an export of the pre-change commit against the new code, `scripts/mlx_af2/experiments/before_after.py`, `e2e_results/speed_work_before_after.jsonl`; before the allocator cache change):
+
+| | before | after | change |
+|---|---|---|---|
+| design step (forward + vjp), 250 residues | 9.77 / 10.37 s | 6.86 / 6.34 s | -34% |
+| design step, 400 residues | 38.09 / 36.29 s | 22.42 / 21.05 s | -42% |
+| vjp alone, 250 / 400 residues | 6.38 / 6.76, 26.06 / 24.61 s | 4.03 / 3.74, 13.70 / 12.99 s | -40% / -47% |
+| multimer forward, one recycle, 400 residues | 14.05 / 11.50 s | 8.65 / 8.02 s | -30% |
+| monomer validation forward, 3 recycles, 195 / 259 residues | 4.35 / 3.84, 8.69 / 7.88 s | 3.32 / 3.10, 6.48 / 6.03 s | -20% / -22% |
+| worker peak (active + cached), 250 / 400 residues | 5.0 to 5.6 / 11.8 GiB | 5.3 to 5.4 / 11.6 to 12.0 GiB | unchanged |
+
+The allocator cache change then took the 400-residue step from 21.7 to 18.7 s (cap 36 GiB, three steps). On the finished code (`e2e_results/speed_work_final.jsonl`): the design step 6.18 s at 250 residues and
+18.84 s at 400 (worker peak 6.8 / 16.6 GiB with the allocator cache counted), the multimer forward 2.55 / 7.84 s, the monomer validation forward 0.67 / 3.20 / 6.27 s at 80 / 195 / 259 residues. The investigation's
+projection, 6 s and 19.5 s, was an upper bound; the realized 6.2 s and 18.8 s are at it. Against the quiet metaljax step (12.45 s and 54.1 s), the design step is 2.0x faster at 250 residues and 2.9x at 400.
+In real campaigns (`e2e.md`) a gradient round went from 6.92 to 4.48 s at 195 residues (1.98x faster than metaljax, was 1.28x), and every trajectory came out the same as before, seed by seed.
+
+Deferred from the review of this work (the ledger has them): the tape budget bounds the tapes held between calls, not one forward's allocation, so two LARGE states near the cap hold up to a fifth of it more than before;
+the per-layer weight slices of the compiled blocks are copies (about 150 MB per resident model in bf16); compiled traces are never evicted (about 0.03 s and a little memory per new length).
+
 ## The suite on the GPU, and a gradient finding about the shipped model (2026-10-31)
 
 `BINDCRAFT_MLX_INTEGRATION=1 BINDCRAFT_MLX_TEST_DEVICE=gpu pytest tests/mlx_af2` runs every MLX test on the GPU under the shared lock (the switch is off by default; unset, only gpu-marked tests use the GPU).

@@ -1,0 +1,28 @@
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "design", "residues": 250, "forward_s": 3.391, "vjp_s": 6.375, "step_s": 9.766, "first_forward_s": 3.508, "first_vjp_s": 6.445, "worker_peak_gib": 4.98, "tape_hits": null, "tape_misses": null}
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "design", "residues": 400, "forward_s": 12.03, "vjp_s": 26.062, "step_s": 38.091, "first_forward_s": 11.219, "first_vjp_s": 24.394, "worker_peak_gib": 11.83, "tape_hits": null, "tape_misses": null}
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 4.9, "worker_peak_gib": 11.83}
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 14.051, "worker_peak_gib": 11.83}
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 0.792, "worker_peak_gib": 11.83}
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 4.347, "worker_peak_gib": 11.83}
+{"round": 1, "tree": "bc2-before", "retain": false, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 8.687, "worker_peak_gib": 11.83}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "design", "residues": 250, "forward_s": 2.831, "vjp_s": 4.029, "step_s": 6.86, "first_forward_s": 3.295, "first_vjp_s": 5.028, "worker_peak_gib": 5.44, "tape_hits": 4, "tape_misses": 0}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "design", "residues": 400, "forward_s": 8.716, "vjp_s": 13.7, "step_s": 22.416, "first_forward_s": 8.931, "first_vjp_s": 14.006, "worker_peak_gib": 12.04, "tape_hits": 8, "tape_misses": 0}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 2.754, "worker_peak_gib": 12.04}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 8.649, "worker_peak_gib": 12.04}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 0.669, "worker_peak_gib": 12.04}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 3.318, "worker_peak_gib": 12.04}
+{"round": 1, "tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 6.48, "worker_peak_gib": 12.04}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "design", "residues": 250, "forward_s": 3.614, "vjp_s": 6.756, "step_s": 10.37, "first_forward_s": 3.716, "first_vjp_s": 6.767, "worker_peak_gib": 5.56, "tape_hits": null, "tape_misses": null}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "design", "residues": 400, "forward_s": 11.681, "vjp_s": 24.605, "step_s": 36.287, "first_forward_s": 11.916, "first_vjp_s": 24.841, "worker_peak_gib": 11.85, "tape_hits": null, "tape_misses": null}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 3.434, "worker_peak_gib": 11.85}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 11.497, "worker_peak_gib": 11.85}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 0.782, "worker_peak_gib": 11.85}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 3.835, "worker_peak_gib": 11.85}
+{"round": 2, "tree": "bc2-before", "retain": false, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 7.879, "worker_peak_gib": 11.85}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "design", "residues": 250, "forward_s": 2.601, "vjp_s": 3.741, "step_s": 6.343, "first_forward_s": 2.741, "first_vjp_s": 3.756, "worker_peak_gib": 5.32, "tape_hits": 4, "tape_misses": 0}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "design", "residues": 400, "forward_s": 8.061, "vjp_s": 12.988, "step_s": 21.05, "first_forward_s": 8.103, "first_vjp_s": 13.004, "worker_peak_gib": 11.59, "tape_hits": 8, "tape_misses": 0}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 250, "forward_s": 2.556, "worker_peak_gib": 11.59}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "multimer forward", "model": "model_1_multimer_v3", "recycles": 1, "residues": 400, "forward_s": 8.023, "worker_peak_gib": 11.59}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 80, "forward_s": 0.666, "worker_peak_gib": 11.59}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 195, "forward_s": 3.099, "worker_peak_gib": 11.59}
+{"round": 2, "tree": "BindCraft2", "retain": true, "kind": "monomer forward", "model": "model_1_ptm", "recycles": 3, "residues": 259, "forward_s": 6.026, "worker_peak_gib": 11.59}

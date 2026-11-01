@@ -16,6 +16,11 @@ what is compared is the machinery and the distributions, not the quality of a fi
 | reported pLDDT | 0.52 ± 0.21 (0.31 to 0.86) | 0.63 ± 0.18 (0.36 to 0.80) |
 | weighted loss (final gradient round) | 7.1 ± 1.9 (3.8 to 8.3) | 6.7 ± 0.9 (5.8 to 8.1) |
 
+**After the speed work (2026-11-01).** The same five MLX campaigns, rerun on the finished speed work (compiled blocks, the vjp skipping the final pass's Evoformer forward, the larger allocator cache; `checkpoints.md`):
+**4.48 ± 0.09 s** per gradient round (4.37 to 4.59), against 6.92 ± 0.11 s before and 8.87 ± 0.18 s for metaljax, so **1.98x** faster than metaljax per round instead of 1.28x, the ranges disjoint. Every trajectory is
+the same as before the speed work: the same stage reached, the same number of rounds, the same final ipTM and weighted loss to four decimals, seed by seed (`e2e_results/campaigns_mlx_after_speed_work.json`).
+The rest of this section describes the run before it.
+
 **Speed.** MLX is 1.28x faster per gradient round at 195 residues, and the ranges are disjoint. The figure does not move with the length of the trajectory (15 rounds or 38), so compile time is not what is measured; the
 two trajectories that went on to the mutate stage (the slowest of each backend) carry that stage's time in their total, and on the screen-only trajectories alone the ratio is 8.79 s against 6.89 s, also 1.28x. It
 agrees with the whole-step benchmark (1.26x at 250 residues, `checkpoints.md`) and is smaller than the 1.53x at 400 residues (the ratio grows with length; why metaljax loses more there was not isolated, `checkpoints.md`). Total design time is not a fair comparison

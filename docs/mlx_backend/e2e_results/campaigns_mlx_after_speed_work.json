@@ -1,0 +1,132 @@
+[
+ {
+  "backend": "mlx",
+  "seed": 1,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 162.0,
+  "timing": {
+   "worker": "0",
+   "start": "1793546834.0",
+   "design": "158.93",
+   "compiled": "1"
+  },
+  "design_seconds": 158.93,
+  "terminated": "anneal",
+  "final_round": {
+   "phase": "anneal",
+   "round": 12
+  },
+  "rounds": 35,
+  "seconds_per_round": 4.54,
+  "final_iptm": 0.22,
+  "final_ptm": 0.6,
+  "weighted_loss": 6.371,
+  "reported_iptm": 0.4,
+  "reported_plddt": 0.76
+ },
+ {
+  "backend": "mlx",
+  "seed": 2,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 70.2,
+  "timing": {
+   "worker": "0",
+   "start": "1793546995.82",
+   "design": "67.33",
+   "compiled": "1"
+  },
+  "design_seconds": 67.33,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "rounds": 15,
+  "seconds_per_round": 4.49,
+  "final_iptm": 0.16,
+  "final_ptm": 0.57,
+  "weighted_loss": 8.137,
+  "reported_iptm": 0.21,
+  "reported_plddt": 0.36
+ },
+ {
+  "backend": "mlx",
+  "seed": 3,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 155.8,
+  "timing": {
+   "worker": "0",
+   "start": "1793547066.04",
+   "design": "152.97",
+   "compiled": "1"
+  },
+  "design_seconds": 152.97,
+  "terminated": "anneal",
+  "final_round": {
+   "phase": "anneal",
+   "round": 12
+  },
+  "rounds": 35,
+  "seconds_per_round": 4.37,
+  "final_iptm": 0.19,
+  "final_ptm": 0.59,
+  "weighted_loss": 5.757,
+  "reported_iptm": 0.31,
+  "reported_plddt": 0.8
+ },
+ {
+  "backend": "mlx",
+  "seed": 4,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 177.3,
+  "timing": {
+   "worker": "0",
+   "start": "1793547221.91",
+   "design": "174.4",
+   "compiled": "1"
+  },
+  "design_seconds": 174.4,
+  "terminated": "mutate",
+  "final_round": {
+   "phase": "harden",
+   "round": 3
+  },
+  "rounds": 38,
+  "seconds_per_round": 4.59,
+  "final_iptm": 0.44,
+  "final_ptm": 0.69,
+  "weighted_loss": 6.2315,
+  "reported_iptm": 0.47,
+  "reported_plddt": 0.68
+ },
+ {
+  "backend": "mlx",
+  "seed": 5,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 68.9,
+  "timing": {
+   "worker": "0",
+   "start": "1793547399.19",
+   "design": "66.08",
+   "compiled": "1"
+  },
+  "design_seconds": 66.08,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "rounds": 15,
+  "seconds_per_round": 4.41,
+  "final_iptm": 0.25,
+  "final_ptm": 0.61,
+  "weighted_loss": 6.83,
+  "reported_iptm": 0.28,
+  "reported_plddt": 0.56
+ }
+]
