@@ -71,3 +71,11 @@ def test_jax_default_path_unaffected(tmp_path):
     from bindcraft.af2 import AlphaFoldDesignModel
     from bindcraft.backend import design_model_class
     assert 'BINDCRAFT_BACKEND' not in os.environ and design_model_class() is AlphaFoldDesignModel
+
+def test_hard_target_campaign_completes_with_monomer_validation(tmp_path):
+    #hard_target seeds the validation models' structure module from the given coordinates (initial_atom_pos), and the desperation ladder switches it on by itself after enough fruitless trajectories:
+    #the monomer validation models must accept it, or a campaign dies at validation after all the design work
+    result = E.run_campaign(tmp_path / 'campaign', 1, 'mlx', parent_device='cpu', trajectory_only=False, lenient=True, budget=E.SMOKE_BUDGET, length=60, extra={'hard_target': 'true'})
+    assert result['returncode'] == 0, result['output'][-3000:]
+    assert 'redesigns passed' in result['output'] and 'campaign done' in result['output']
+    assert 'initial_atom_pos' not in result['output']

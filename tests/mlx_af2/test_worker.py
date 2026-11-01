@@ -183,3 +183,41 @@ def test_the_worker_runs_a_monomer_model_forward_only(remote):
         assert got[name].shape == tuple(want[name].shape) and rel_err(got[name], np.asarray(want[name])) < 1e-5, name
     with pytest.raises(WorkerError, match=r"(?s)model_1_ptm.*no gradient"):
         remote.vjp(handle, call_id, key, features, 0, None, {'distogram/logits': np.ones((12, 12, 64), np.float32)}, ('msa_feat',))
+
+@pytest.mark.integration
+def test_a_stalled_worker_is_killed_and_the_cause_named():
+    #a worker that stops answering without dying (a wedged kernel, a deadlock) must not hang the run forever with the GPU lock held: the call has a deadline, the worker is killed, the error says it stalled
+    import threading
+    worker = RemoteModel(cases.params_path(), dtype='fp32')
+    features, key = crop(load_ref('small', 'fp32', 0), 30, 42), np.asarray([0, 1], np.uint32)
+    safety = None
+    try:
+        handle = worker.load(MODEL, model_config())
+        worker.forward(handle, key, features, 0, None)  #warm: weights read, graph built, so the deadline below is for a call that would take a second
+        worker.call_timeout_s = 4.0
+        safety = threading.Timer(90, lambda: os.kill(worker.pid, signal.SIGKILL))  #so a missing deadline fails this test instead of hanging the suite
+        safety.start()
+        os.kill(worker.pid, signal.SIGSTOP)  #alive, and silent
+        started = time.time()
+        with pytest.raises(WorkerError, match=r'(?s)stalled.*no reply within 4 s') as failure:
+            worker.forward(handle, key, features, 0, None)
+        assert time.time() - started < 60
+        assert 'out of memory' not in str(failure.value).lower()  #and the repo's retry ladder does not rerun it
+        for name in worker.last_shm_names:
+            with pytest.raises(FileNotFoundError):
+                shared_memory.SharedMemory(name=name)
+        safety.cancel()
+        outputs, _ = worker.forward(handle, key, features, 0, None)  #the next call starts a new worker and replays the registered models
+        assert set(outputs) == set(OUTPUT_KEYS)
+    finally:
+        if safety is not None:
+            safety.cancel()
+        worker.close()
+
+def test_the_call_deadline_has_a_default_and_an_environment_override(monkeypatch):
+    monkeypatch.delenv(worker_module.CALL_TIMEOUT_ENV, raising=False)
+    assert RemoteModel('/unused', dtype='fp32').call_timeout_s == worker_module.DEFAULT_CALL_TIMEOUT_S == 1800.0
+    monkeypatch.setenv(worker_module.CALL_TIMEOUT_ENV, '45')
+    assert RemoteModel('/unused', dtype='fp32').call_timeout_s == 45.0
+    monkeypatch.setenv(worker_module.CALL_TIMEOUT_ENV, '0')
+    assert RemoteModel('/unused', dtype='fp32').call_timeout_s is None  #0 turns the deadline off

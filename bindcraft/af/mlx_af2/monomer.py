@@ -143,8 +143,6 @@ class MonomerModel(MultimerModel):
 
     def single_pass(self, features: dict, prev: dict, dropout_key=None, *, subbatch_size: int | None = None, remat: bool = True) -> tuple[dict, dict]:
         #one AlphaFoldIteration: returns the nested outputs and the state the next pass starts from
-        if 'initial_atom_pos' in features:
-            raise NotImplementedError('initial_atom_pos: the large-complex initialisation is not ported for the monomer models (the repo builds them for validation, without it)')
         cfg, p = self.cfg, self.params
         keys = list(mx.random.split(dropout_key, 2)) if dropout_key is not None else [None, None]
         representations = self.trunk(features, prev, keys[0], subbatch_size=subbatch_size, remat=remat)

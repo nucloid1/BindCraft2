@@ -324,8 +324,6 @@ def test_monomer_models_have_no_gradient_by_name():
     model = monomer.MonomerModel('model_1_ptm', params('model_1_ptm'), config('model_1_ptm').to_dict(), mx.float32)
     with pytest.raises(NotImplementedError, match='model_1_ptm'):
         model.vjp({}, mx.array(np.asarray([0, 1], np.uint32)), 1, {}, ('msa_feat',))
-    with pytest.raises(NotImplementedError, match='initial_atom_pos'):
-        model.forward({'initial_atom_pos': mx.zeros((3, 37, 3)), 'aatype': mx.zeros((3,), mx.int32)}, mx.array(np.asarray([0, 1], np.uint32)), 0)
 
 def test_default_validation_model_builds_under_mlx(monkeypatch):
     #a default-settings campaign builds a multimer design model and a monomer validation model through the repo's own factory; neither is refused (no worker starts: a fake remote)
@@ -345,3 +343,57 @@ def test_default_validation_model_builds_under_mlx(monkeypatch):
     validation = design_model_class()(presets=af2.MONOMER_POOL, num_recycle=3, **arguments)
     assert design.remote is validation.remote is FakeRemote.instance
     assert FakeRemote.instance.loaded == list(af2.MULTIMER_POOL[:3]) + list(af2.MONOMER_POOL)
+
+
+def backbone_atoms(seed=6, residues=24):
+    #N, CA, C of a made-up chain, with whole residues at zero positions as the padding and the unplaced binder have them
+    rng = np.random.default_rng(seed)
+    atoms = (3.0 * rng.standard_normal((residues, 37, 3))).astype(np.float32)
+    atoms[5:8] = 0.0
+    atoms[residues - 2:] = 0.0
+    return atoms
+
+def test_make_transform_from_reference_matches_quat_affine():
+    #the monomer frame of N, CA, C (rotation [N, 3, 3] and translation [N, 3]), including the residues at zero positions, whose frame is whatever the epsilons make it
+    order = {'N': 0, 'CA': 1, 'C': 2}
+    real = load_ref('small', 'fp32__model_1_ptm', 0)['in/template_all_atom_positions'][0]
+    for atoms in (backbone_atoms(), real):
+        want_rot, want_trans = af_quat.make_transform_from_reference(n_xyz=jnp.asarray(atoms[:, order['N']]), ca_xyz=jnp.asarray(atoms[:, order['CA']]), c_xyz=jnp.asarray(atoms[:, order['C']]))
+        got_rot, got_trans = monomer_structure.make_transform_from_reference(mx.array(atoms[:, order['N']]), mx.array(atoms[:, order['CA']]), mx.array(atoms[:, order['C']]))
+        assert rel_err(np.asarray(got_rot), np.asarray(want_rot)) < 1e-6 and rel_err(np.asarray(got_trans), np.asarray(want_trans)) < 1e-6
+
+def test_rot_to_quat_matches_quat_affine_up_to_sign():
+    #a quaternion and its negative are one rotation, so the eigenvector's sign is free; the rotation it gives and its alignment with JAX's are not
+    rng = np.random.default_rng(5)
+    quaternion = rng.standard_normal((30, 4)).astype(np.float32)
+    quaternion /= np.linalg.norm(quaternion, axis=-1, keepdims=True)
+    rot = np.asarray(monomer_structure.quat_to_rot(mx.array(quaternion)))
+    order = {'N': 0, 'CA': 1, 'C': 2}
+    atoms = backbone_atoms()
+    frame_rot = np.asarray(af_quat.make_transform_from_reference(n_xyz=jnp.asarray(atoms[:, 0]), ca_xyz=jnp.asarray(atoms[:, 1]), c_xyz=jnp.asarray(atoms[:, 2]))[0])
+    for matrices in (rot, frame_rot):
+        want = np.asarray(af_quat.rot_to_quat(jnp.asarray(matrices), unstack_inputs=True))
+        got = np.asarray(monomer_structure.rot_to_quat(mx.array(matrices)))
+        sign = np.sign(np.sum(want * got, axis=-1, keepdims=True))
+        assert rel_err(got * sign, want) < 1e-5
+        assert rel_err(np.asarray(monomer_structure.quat_to_rot(mx.array(got))), np.asarray(monomer_structure.quat_to_rot(mx.array(want)))) < 1e-5
+
+@pytest.mark.integration
+@pytest.mark.parametrize('case', ('small', 'medium'))
+@pytest.mark.parametrize('model_name', PTM_WITH_TEMPLATES)
+def test_monomer_forward_with_the_large_complex_initialisation_matches_the_seam(model_name, case, monkeypatch):
+    #hard_target (and the desperation ladder's first rung) seeds the validation models' structure module from the given coordinates: initial_atom_pos, rewritten to the previous pass's positions between recycles
+    ref, features = reference_features_and_rows(model_name, case, 2, monkeypatch)
+    assert ref['meta']['large_complex_initialization'] and 'initial_atom_pos' in features
+    live = ref['in/seq_mask'] > 0
+    model = monomer.MonomerModel(model_name, params(model_name), config(model_name).to_dict(), mx.float32)
+    got, _ = model.forward(features, mx.array(np.asarray(ref['meta']['key'], np.uint32)), 1)
+    for name in OUTPUT_KEYS:
+        want = ref[f'out/{name}']
+        per_residue = name in ('predicted_lddt/logits', 'experimentally_resolved/logits')
+        error = rel_err(np.asarray(got[name])[live] if per_residue else np.asarray(got[name]), want[live] if per_residue else want)
+        print(model_name, case, name, f'{error:.2e}')
+        assert error < 1e-3, (name, error)
+    plain = ref_features(load_ref(case, f'fp32__{model_name}', 0))
+    differs, _ = model.forward(plain, mx.array(np.asarray(ref['meta']['key'], np.uint32)), 1)
+    assert rel_err(np.asarray(got['structure_module/final_atom_positions']), np.asarray(differs['structure_module/final_atom_positions'])) > 1e-4  #control: the initialisation changes the answer, so the match above is not vacuous

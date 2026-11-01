@@ -1,3 +1,4 @@
+import subprocess
 import types
 
 import pytest
@@ -27,8 +28,11 @@ def test_the_opt_in_floor_allows_a_full_disk_with_enough_free_and_says_so(monkey
     with pytest.raises(SystemExit, match='below'):
         preflight.check_disk()
 
-def test_a_heavy_process_is_reported(monkeypatch):
-    fake = types.SimpleNamespace(stdout='  1 20971520 /sbin/launchd\n  4242 16777216 /usr/bin/python3\n')
-    monkeypatch.setattr(preflight.subprocess, 'run', lambda *a, **k: fake)
-    assert preflight.heavy_processes(8.0) == ['pid 1 /sbin/launchd 20.0 GB', 'pid 4242 /usr/bin/python3 16.0 GB']
-    assert preflight.heavy_processes(18.0) == ['pid 1 /sbin/launchd 20.0 GB']
+def test_other_processes_memory_is_not_checked(monkeypatch):
+    #only the disk is checked: a browser or another job holding gigabytes does not stop a run (Ethan dropped that rule), so nothing asks ps about other processes
+    def forbidden(*arguments, **keywords):
+        raise AssertionError('preflight asked the system about other processes')
+    monkeypatch.setattr(preflight.shutil, 'disk_usage', lambda path: usage(0.5))
+    monkeypatch.setattr(subprocess, 'run', forbidden)
+    preflight.checks()
+    assert not hasattr(preflight, 'heavy_processes')

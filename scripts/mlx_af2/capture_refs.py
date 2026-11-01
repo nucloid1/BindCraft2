@@ -185,6 +185,9 @@ def main(argv=None) -> None:
                     if variant == 'fp32':  #call1: no recycle, so the previous state is zeros and the trunk can be judged before the structure module exists
                         arrays, meta = capture_call(case, variant, num_recycle=0, model_name=model_name, forward_only=True)
                         save(root, case, f'{variant}__{model_name}', 1, arrays, meta)
+                        if model_name != 'model_3_ptm':  #call2: one recycle with the large-complex initialisation (hard_target validation seeds the structure module from the given coordinates)
+                            arrays, meta = capture_call(case, variant, num_recycle=1, large_complex_initialization=True, model_name=model_name, forward_only=True)
+                            save(root, case, f'{variant}__{model_name}', 2, arrays, meta)
         return
     if '--noise-floor' in argv:
         for case in names:

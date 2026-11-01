@@ -176,3 +176,64 @@ def test_call_ids_do_not_repeat_after_a_restart_and_an_old_id_is_a_miss(remote):
     remote.vjp(handle, before, key, features, 0, None, {'distogram/logits': np.ones((12, 12, 64), np.float32)}, DIFF)  #the backward pass of a call the old worker served
     stats = remote.stats()
     assert stats['vjp_cache_misses'] == 1 and stats['vjp_cache_hits'] == 0
+
+def random_cotangents(outputs):
+    rng = np.random.default_rng(3)
+    return {name: rng.standard_normal(tuple(outputs[name].shape)).astype(np.float32) for name in ('distogram/logits', 'predicted_lddt/logits', 'structure_module/final_atom_positions')}
+
+@pytest.mark.integration
+def test_vjp_with_dropout_on_replays_the_forwards_masks(model):
+    #design runs with dropout on by default (design_dropout), so the gradient must be that of the forward that was actually computed: the vjp's recomputation of the final pass, a separate call, draws the same
+    #masks, whether it starts from the cached state or recycles again; another key draws other ones; dropout off is another function. (JAX's dropout streams are not MLX's, so this is judged within MLX.)
+    ref = load_ref('small', 'fp32', 0)
+    features = {**crop(ref, 30, 42), 'use_dropout': np.asarray(True)}
+    features = {name: mx.array(value) for name, value in features.items()}
+    key = mx.array(np.asarray(ref['meta']['key'], np.uint32))
+    outputs, _, before = model.forward_with_state(features, key, 1)
+    cotangents = {name: mx.array(value) for name, value in random_cotangents(outputs).items()}
+    cached = model.vjp(features, key, 1, cotangents, DIFF, prev=before)
+    recomputed = model.vjp(features, key, 1, cotangents, DIFF)
+    repeated = model.vjp(features, key, 1, cotangents, DIFF)
+    other_key = model.vjp(features, mx.array(np.asarray([7, 9], np.uint32)), 1, cotangents, DIFF)
+    no_dropout = model.vjp({**features, 'use_dropout': mx.array(False)}, key, 1, cotangents, DIFF)
+    for name in DIFF:
+        assert np.array_equal(np.asarray(cached[name]), np.asarray(recomputed[name])), name  #the cached state is the state a recomputation reaches
+        assert np.array_equal(np.asarray(repeated[name]), np.asarray(recomputed[name])), name  #reproducible per key
+        assert rel_err(other_key[name], cached[name]) > 1e-3, name  #the key matters
+        assert rel_err(no_dropout[name], cached[name]) > 1e-3, name  #and dropout was really applied
+
+@pytest.mark.integration
+def test_worker_vjp_with_dropout_on_is_the_same_on_a_cache_hit_and_a_miss(remote):
+    ref = load_ref('small', 'fp32', 0)
+    features = {**crop(ref, 30, 42), 'use_dropout': np.asarray(True)}
+    key = np.asarray(ref['meta']['key'], np.uint32)
+    handle = remote.load(MODEL, model_config())
+    outputs, call_id = remote.forward(handle, key, features, 1, None)
+    cotangents = random_cotangents(outputs)
+    hit = remote.vjp(handle, call_id, key, features, 1, None, cotangents, DIFF)
+    miss = remote.vjp(handle, call_id + 1000, key, features, 1, None, cotangents, DIFF)
+    stats = remote.stats()
+    assert stats['vjp_cache_hits'] == 1 and stats['vjp_cache_misses'] == 1
+    for name in DIFF:
+        assert np.abs(hit[name]).max() > 0 and np.array_equal(hit[name], miss[name]), name
+
+@pytest.mark.integration
+def test_vjp_final_pass_uses_the_dropout_key_the_forwards_final_pass_used(model):
+    #the structural half of the replay check, independent of numerics (a finite difference of this model in float32 is noise): the key every pass receives, forward against vjp
+    ref = load_ref('small', 'fp32', 0)
+    features = {name: mx.array(value) for name, value in {**crop(ref, 30, 42), 'use_dropout': np.asarray(True)}.items()}
+    key = mx.array(np.asarray(ref['meta']['key'], np.uint32))
+    seen = []
+    real = model.single_pass
+    model.single_pass = lambda feats, prev, dropout_key=None, **keywords: (seen.append(None if dropout_key is None else np.asarray(mx.random.key_data(dropout_key) if hasattr(mx.random, 'key_data') else dropout_key).tolist()), real(feats, prev, dropout_key, **keywords))[1]
+    try:
+        outputs, _, _ = model.forward_with_state(features, key, 1)
+        forward_keys, seen[:] = list(seen), []
+        cotangents = {name: mx.array(value) for name, value in random_cotangents(outputs).items()}
+        model.vjp(features, key, 1, cotangents, DIFF)
+        vjp_keys = list(seen)
+    finally:
+        model.single_pass = real
+    assert len(forward_keys) == 2 and len(vjp_keys) == 2 and all(entry is not None for entry in forward_keys + vjp_keys)  #a recycle pass and a final pass, each with a key
+    assert forward_keys[0] != forward_keys[1]  #distinct per pass
+    assert vjp_keys == forward_keys  #the vjp's recycle pass and its final pass draw what the forward's did

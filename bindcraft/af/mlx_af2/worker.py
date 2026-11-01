@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import collections
+import contextlib
 import os
 import pickle
 import re
@@ -41,6 +42,8 @@ ALIGN = 64
 DTYPES = ('bf16', 'fp32')
 MAX_LOADED = 5
 MAX_CALLS = 8
+CALL_TIMEOUT_ENV = 'BINDCRAFT_MLX_CALL_TIMEOUT_S'
+DEFAULT_CALL_TIMEOUT_S = 1800.0  #the slowest legitimate call is a gradient at several hundred residues on a loaded machine, about a minute; this is a net for a wedge, not a speed limit
 DEVICE_ENV = 'BINDCRAFT_MLX_DEVICE'
 
 def send(stream, obj: Any) -> None:
@@ -206,6 +209,10 @@ def main(argv=None) -> None:
 class WorkerError(RuntimeError):
     pass
 
+def default_call_timeout() -> Optional[float]:
+    value = float(os.environ.get(CALL_TIMEOUT_ENV, DEFAULT_CALL_TIMEOUT_S))
+    return value if value > 0 else None  #0 turns the deadline off
+
 class RemoteModel:
     """The multimer model in a persistent child process; numpy in, numpy out. The first call starts the worker."""
     instances: Dict[tuple, 'RemoteModel'] = {}
@@ -222,6 +229,8 @@ class RemoteModel:
         self.last_shm_names: List[str] = []
         self.payload_log: List[Tuple[str, int]] = []
         self.last_error: Optional[WorkerError] = None
+        self.call_timeout_s = default_call_timeout()  #a call (and the worker's start) that gets no reply in this long kills the worker and raises WorkerError saying it stalled
+        self.stalled_after: Optional[float] = None
         self.last_call_id = 0  #never reset, so a call id issued before a restart cannot match a state the new worker holds for other inputs
         self.lock = threading.RLock()
 
@@ -250,7 +259,8 @@ class RemoteModel:
             self.proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=dict(os.environ))
             atexit.register(self.close)
             try:
-                kind, info = receive(self.proc.stdout)
+                with self.deadline(self.proc):
+                    kind, info = receive(self.proc.stdout)
             except EOFError:
                 raise WorkerError(self.death('during startup'))
             if kind != 'ready':
@@ -259,10 +269,31 @@ class RemoteModel:
             for name, cfg in self.registered:  #a restarted worker is told again what it had loaded, so handles stay valid; the call that failed is never retried
                 self.exchange_once('load', {'name': name, 'cfg': cfg}, {}, replay=True)
 
+    @contextlib.contextmanager
+    def deadline(self, proc):
+        #a timer that kills the worker when the reply has not come in call_timeout_s; the read that was blocked on it then sees the pipe close, and death() says why
+        timer = None
+        if self.call_timeout_s:
+            timer = threading.Timer(self.call_timeout_s, self.kill_stalled, args=(proc,))
+            timer.daemon = True
+            timer.start()
+        try:
+            yield
+        finally:
+            if timer is not None:
+                timer.cancel()
+
+    def kill_stalled(self, proc) -> None:
+        self.stalled_after = self.call_timeout_s
+        proc.kill()
+
     def death(self, when: str) -> str:
         code = None if self.proc is None else self.proc.wait(timeout=10)
         self.proc = None
+        stalled, self.stalled_after = self.stalled_after, None
         cap = f'; its memory cap was {self.cap_gib} GiB' if self.cap_gib else ''
+        if stalled:
+            return f'MLX worker stalled {when}: no reply within {stalled:.0f} s, so it was killed (exit code {code}{cap}); raise {CALL_TIMEOUT_ENV} if a call really takes longer'
         return f'MLX worker died {when} (exit code {code}{cap}); see its stderr above'
 
     def worker_error(self, traceback_text: str) -> str:
@@ -298,8 +329,9 @@ class RemoteModel:
         self.payload_log.append((kind, payload_bytes(arrays)))
         try:
             try:
-                send(self.proc.stdin, (kind, {**request, 'in_shm': block.name, 'layout': layout}))
-                reply, info = receive(self.proc.stdout)
+                with self.deadline(self.proc):
+                    send(self.proc.stdin, (kind, {**request, 'in_shm': block.name, 'layout': layout}))
+                    reply, info = receive(self.proc.stdout)
             except (EOFError, BrokenPipeError):
                 raise WorkerError(self.death(f'during {kind}'))
             if reply == 'error':

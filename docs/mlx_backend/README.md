@@ -13,8 +13,8 @@ BINDCRAFT_BACKEND=mlx bindcraft design examples/pdl1_denovo.json
 ```
 
 - **Design** runs the AlphaFold-Multimer models (`model_N_multimer_v3`), forward and gradient. **Validation** runs the pTM monomer models (`model_1_ptm`, `model_2_ptm`, the default pool) or multimer models, forward only.
-  A monomer model has no gradient on this backend (a request for one fails, naming the model), the monomer models without a predicted-aligned-error head (`model_1` and so on) are refused by name, and the
-  large-complex initialisation (`initial_atom_pos`) is refused for the monomer models. The repo builds its validation models without it.
+  A monomer model has no gradient on this backend (a request for one fails, naming the model), and the monomer models without a predicted-aligned-error head (`model_1` and so on) are refused by name.
+  Seeding from given coordinates (`hard_target`, `large_complex_initialization`, and the desperation ladder's first rung, which switches `hard_target` on by itself) works for both families.
 - The backend needs an Apple silicon Mac and the `mlx` package; it is refused up front, with the install command, otherwise.
 - The parent's JAX runs on the CPU (`import bindcraft` sets `JAX_PLATFORMS=cpu` when the backend is mlx and you have not set it). Measured equal to metal for the whole pipeline (`e2e.md`); `JAX_PLATFORMS=metal` overrides.
 - Precision is bfloat16 as on every backend. The MLX model rounds to bfloat16 at every operation, like bfloat16 hardware; the JAX CPU model's bfloat16 does not (XLA keeps float32 between fused operations), so
@@ -34,10 +34,11 @@ Evoformer block rematerialised, which is the one extra forward per step. A desig
   The repo's retry ladder (smaller shards, chunked attention) does not apply: the worker's ladder is one rung, and a failure is worded so that `af2.is_out_of_memory` does not match it.
 - **One GPU run at a time.** A GPU worker holds an exclusive lock on `~/.cache/esmfold2_mlx/gpu.lock` (`ESMFOLD2_MLX_LOCK` moves it) for the process tree, shared with the other MLX projects; a second run fails at once, naming
   the holder. A CPU worker (`BINDCRAFT_MLX_DEVICE=cpu`, for tests) takes none.
-- **Disk and processes.** A run starts only if the disk is below `BINDCRAFT_MLX_MAX_DISK_PCT` percent full (default 90) and no other process holds more than 8 GB. `BINDCRAFT_MLX_MIN_FREE_GB=<gb>` is an explicit, announced
+- **Disk.** A run starts only if the disk is below `BINDCRAFT_MLX_MAX_DISK_PCT` percent full (default 90); how much memory other processes hold is not checked. `BINDCRAFT_MLX_MIN_FREE_GB=<gb>` is an explicit, announced
   opt-in for running above the limit with at least that much free; the default is never loosened.
 - **Failure is loud.** A worker that dies (its memory guard, the OS) raises an error naming the exit code and the cap; the call that failed is not retried, the next call starts a new worker and registers the models
-  again, and there is no fallback to JAX. A campaign whose worker is killed mid-trajectory exits nonzero with `MLX worker` and `exit code -9` in its output (tested).
+  again, and there is no fallback to JAX. A campaign whose worker is killed mid-trajectory exits nonzero with `MLX worker` and `exit code -9` in its output (tested). A worker that stops answering without dying is killed
+  after `BINDCRAFT_MLX_CALL_TIMEOUT_S` seconds without a reply (default 1800, a net for a wedge rather than a speed limit; `0` turns it off) and the error says it stalled; a frozen worker would otherwise hold the run, and the GPU lock, forever.
 
 ## Measured against metaljax (M3 Max, bf16, warm; ratio = metaljax time / MLX time, above 1 means MLX is faster)
 
