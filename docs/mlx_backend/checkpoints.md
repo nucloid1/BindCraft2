@@ -114,7 +114,7 @@ Corrected 2026-11-01. This table first read 400 residues: 12.1 + 35.2 = 47.3 s a
 
 ### Speed headroom: what the investigation found (Ethan asked for it 2026-10-31; run 2026-11-01)
 
-Everything here is measured on the M3 Max in bf16, warm, in one quiet session; the scripts are `scripts/mlx_af2/profile_block.py`, `profile_model.py` and `experiments/` (the experiments are scratch probes, not backend code), the raw rows are in `e2e_results/`. Nothing below is built into the backend.
+Everything here is measured on the M3 Max in bf16, warm, in one quiet session; the scripts are `scripts/mlx_af2/profile_block.py`, `profile_model.py` and `experiments/` (the experiments are scratch probes, not backend code), the raw rows are in `e2e_results/`. This section is the investigation as it was run: leads A, B and C were then built, with the results in "Speed work: built 2026-11-01" below.
 
 **1. The "unexplained 15 s at 400 residues" was a measurement artifact.** The vjp at 400 residues is 24.1 s through the worker (twice) and 22.6 to 24.9 s in process, against about 19.8 s predicted from the blocks. The 35.2 s did not reproduce (see the correction above). `layers.ATTENTION_CHUNK` 512 instead of 256 gains nothing (24.9 against 23.9 s, and 1.2 GiB more memory), so the chunk size is not a lever.
 
