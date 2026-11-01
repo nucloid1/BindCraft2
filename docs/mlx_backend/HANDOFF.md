@@ -6,11 +6,11 @@ decision taken on the way.
 
 ## Where the work is
 
-- Repo `~/BindCraft2`, branch **`mlx-backend`**, local only: **nothing has been pushed**. It carries the user's Metal fork (`bf5e0cc`, branch `apple-silicon-metal`, left untouched and still 147 commits behind upstream: whether to update it
+- Repo `~/BindCraft2`, local **`main`** (54 commits ahead of `origin/main`), local only: **nothing has been pushed**. The work was done on branch `mlx-backend`, fast-forwarded into `main` on 2026-11-01 and then deleted (every commit of it is on `main`). It carries the user's Metal fork (`bf5e0cc`, branch `apple-silicon-metal`, left untouched and still 147 commits behind upstream: whether to update it
   is an open question) and a merge of upstream (`205fe64`, upstream `main` at `b6fb3ae`; backup branch `backup/mlx-backend-before-upstream-merge`; local `main` was fast-forwarded to upstream). The MLX work is 36 commits on top, listed below.
 - The executor's ledger (one line per task, every ruling, every finding) is `.superpowers/sdd/2026-10-30-mlx-alphafold-backend/progress.md`; the speed work (2026-11-01, plan `docs/superpowers/plans/2026-11-01-mlx-speed-work.md`) has its own,
   `.superpowers/sdd/2026-11-01-mlx-speed-work/progress.md`. Both are git-ignored scratch: if they are gone, this file and `git log` are the record.
-- On 2026-11-01 Ethan said "build the speed work" and "and merge to main": after the speed work, both suites and its review, `mlx-backend` was fast-forwarded into local `main` (still nothing pushed).
+- On 2026-11-01 Ethan said "build the speed work" and "and merge to main": after the speed work, both suites and its review, `mlx-backend` was fast-forwarded into local `main` (`b6fb3ae` -> `943ef56`, then this note), and the branch deleted. Nothing pushed.
 - Memory notes for the assistant are in `~/.claude/projects/-Users-ethanputnam-Bindcraft-Hunter/memory/` (`bindcraft2-mlx-backend.md`).
 
 ## What is established
