@@ -142,3 +142,35 @@ def test_the_tape_budget_defaults_to_a_fifth_of_the_cap_and_has_an_override(monk
     assert worker_module.tape_budget_bytes(None) == int(worker_module.UNCAPPED_TAPE_GIB * 2 ** 30)
     monkeypatch.setenv(worker_module.TAPE_BUDGET_ENV, '0.5')
     assert worker_module.tape_budget_bytes(36.0) == int(0.5 * 2 ** 30)
+
+def test_the_models_vjp_refuses_tapes_recorded_for_another_call(model):
+    #the model's vjp checks the tapes against the call before using them (the worker only hands them over on a validated hit, but the model must not trust that): another length, another depth
+    ref = load_ref('small', 'fp32', 0)
+    features = {name: mx.array(value) for name, value in crop(ref, 30, 42).items()}
+    other = {name: mx.array(value) for name, value in crop(ref, 30, 44).items()}
+    key, cotangent = key_of(ref), {'distogram/logits': mx.ones((14, 14, 64))}
+    tapes = model.new_tapes()
+    model.forward_with_state(features, key, 0, tapes=tapes)
+    with pytest.raises(ValueError, match='tape'):
+        model.vjp(other, key, 0, cotangent, DIFF, tapes=tapes)
+    shallow = model.new_tapes()
+    model.forward_with_state(features, key, 0, tapes=shallow)
+    shallow['evoformer_iteration'].inputs.pop()  #a recording one block short
+    with pytest.raises(ValueError, match='tape'):
+        model.vjp(features, key, 0, {'distogram/logits': mx.ones((12, 12, 64))}, DIFF, tapes=shallow)
+
+def test_a_retained_call_id_used_with_other_inputs_never_uses_its_tape(remote):
+    features, key = small_call()
+    handle = remote.load(MODEL, model_config())
+    outputs, call = remote.forward(handle, key, features, 1, None, retain=True)
+    cotangents = random_cotangents(outputs)
+    other_key = np.asarray([7, 9], np.uint32)
+    reused = remote.vjp(handle, call, other_key, features, 1, None, cotangents, DIFF)  #the retained call's id, another key
+    other = remote.load(MODEL, model_config(tag='other'))
+    remote.vjp(other, call, key, features, 1, None, cotangents, DIFF)  #the retained call's id, another model
+    stats = remote.stats()
+    assert stats['tape_hits'] == 0 and stats['tape_misses'] == 2 and stats['vjp_cache_misses'] == 2
+    recomputed = remote.vjp(handle, call + 1000, other_key, features, 1, None, cotangents, DIFF)  #an id never issued: the other key's own gradient, from scratch
+    for name in DIFF:
+        assert np.abs(recomputed[name]).max() > 0
+        assert np.array_equal(reused[name], recomputed[name]), name
