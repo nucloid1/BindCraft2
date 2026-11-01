@@ -1,0 +1,272 @@
+[
+ {
+  "backend": "jax",
+  "seed": 1,
+  "parent_device": null,
+  "returncode": 0,
+  "wall_seconds": 141.7,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed1\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed1/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign jax_seed1\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed1 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_a82345f52de29497 | accepted 0/1 ===\n  rejected at screen design stage  i_pTM=0.19    pLDDT=0.53   due to [pLDDT]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793496124.44",
+   "design": "133.48",
+   "compiled": "1"
+  },
+  "design_seconds": 133.48,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "final_iptm": 0.16,
+  "final_ptm": 0.58,
+  "weighted_loss": 7.774,
+  "reported_iptm": 0.19,
+  "reported_plddt": 0.53,
+  "rounds": 15,
+  "seconds_per_round": 8.9
+ },
+ {
+  "backend": "mlx",
+  "seed": 1,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 242.7,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed1\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed1/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign mlx_cpu_seed1\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed1 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_a82345f52de29497 | accepted 0/1 ===\n  passed screen design stage  i_pTM=0.19    pLDDT=0.63  \n  passed refine design stage  i_pTM=0.28    pLDDT=0.72  \n  rejected at anneal design stage  i_pTM=0.4     pLDDT=0.76   due to [i_pTM]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793496260.78",
+   "design": "239.85",
+   "compiled": "1"
+  },
+  "design_seconds": 239.85,
+  "terminated": "anneal",
+  "final_round": {
+   "phase": "anneal",
+   "round": 12
+  },
+  "final_iptm": 0.22,
+  "final_ptm": 0.6,
+  "weighted_loss": 6.371,
+  "reported_iptm": 0.4,
+  "reported_plddt": 0.76,
+  "rounds": 35,
+  "seconds_per_round": 6.85
+ },
+ {
+  "backend": "jax",
+  "seed": 2,
+  "parent_device": null,
+  "returncode": 0,
+  "wall_seconds": 356.7,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed2\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed2/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign jax_seed2\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed2 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_038955e3d58c704e | accepted 0/1 ===\n  passed screen design stage  i_pTM=0.7     pLDDT=0.78  \n  passed refine design stage  i_pTM=0.75    pLDDT=0.84  \n  passed anneal design stage  i_pTM=0.79    pLDDT=0.87  \n  passed harden design stage  i_pTM=0.79    pLDDT=0.86  \n  passed mutate design stage  i_pTM=0.79    pLDDT=0.86  \n  binder hallucination successful\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793496508.84",
+   "design": "348.47",
+   "compiled": "1"
+  },
+  "design_seconds": 348.47,
+  "terminated": "",
+  "final_round": {
+   "phase": "harden",
+   "round": 3
+  },
+  "final_iptm": 0.79,
+  "final_ptm": 0.85,
+  "weighted_loss": 3.7715,
+  "reported_iptm": 0.79,
+  "reported_plddt": 0.86,
+  "rounds": 38,
+  "seconds_per_round": 9.17
+ },
+ {
+  "backend": "mlx",
+  "seed": 2,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 106.2,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed2\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed2/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign mlx_cpu_seed2\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed2 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_038955e3d58c704e | accepted 0/1 ===\n  rejected at screen design stage  i_pTM=0.21    pLDDT=0.36   due to [pLDDT]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793496860.25",
+   "design": "103.33",
+   "compiled": "1"
+  },
+  "design_seconds": 103.33,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "final_iptm": 0.16,
+  "final_ptm": 0.57,
+  "weighted_loss": 8.137,
+  "reported_iptm": 0.21,
+  "reported_plddt": 0.36,
+  "rounds": 15,
+  "seconds_per_round": 6.89
+ },
+ {
+  "backend": "jax",
+  "seed": 3,
+  "parent_device": null,
+  "returncode": 0,
+  "wall_seconds": 139.6,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed3\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed3/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign jax_seed3\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed3 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_1d00a6c938157892 | accepted 0/1 ===\n  rejected at screen design stage  i_pTM=0.17    pLDDT=0.39   due to [pLDDT]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793496971.77",
+   "design": "131.43",
+   "compiled": "1"
+  },
+  "design_seconds": 131.43,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "final_iptm": 0.17,
+  "final_ptm": 0.59,
+  "weighted_loss": 8.064,
+  "reported_iptm": 0.17,
+  "reported_plddt": 0.39,
+  "rounds": 15,
+  "seconds_per_round": 8.76
+ },
+ {
+  "backend": "mlx",
+  "seed": 3,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 242.5,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed3\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed3/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign mlx_cpu_seed3\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed3 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_1d00a6c938157892 | accepted 0/1 ===\n  passed screen design stage  i_pTM=0.21    pLDDT=0.66  \n  passed refine design stage  i_pTM=0.21    pLDDT=0.73  \n  rejected at anneal design stage  i_pTM=0.31    pLDDT=0.8    due to [i_pTM]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793497106.07",
+   "design": "239.59",
+   "compiled": "1"
+  },
+  "design_seconds": 239.59,
+  "terminated": "anneal",
+  "final_round": {
+   "phase": "anneal",
+   "round": 12
+  },
+  "final_iptm": 0.19,
+  "final_ptm": 0.59,
+  "weighted_loss": 5.757,
+  "reported_iptm": 0.31,
+  "reported_plddt": 0.8,
+  "rounds": 35,
+  "seconds_per_round": 6.85
+ },
+ {
+  "backend": "jax",
+  "seed": 4,
+  "parent_device": null,
+  "returncode": 0,
+  "wall_seconds": 139.5,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed4\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed4/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign jax_seed4\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed4 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_33a5da36e9782190 | accepted 0/1 ===\n  rejected at screen design stage  i_pTM=0.17    pLDDT=0.5    due to [pLDDT]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793497353.86",
+   "design": "131.29",
+   "compiled": "1"
+  },
+  "design_seconds": 131.29,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "final_iptm": 0.16,
+  "final_ptm": 0.58,
+  "weighted_loss": 7.816,
+  "reported_iptm": 0.17,
+  "reported_plddt": 0.5,
+  "rounds": 15,
+  "seconds_per_round": 8.75
+ },
+ {
+  "backend": "mlx",
+  "seed": 4,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 273.3,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed4\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed4/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign mlx_cpu_seed4\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed4 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_33a5da36e9782190 | accepted 0/1 ===\n  passed screen design stage  i_pTM=0.67    pLDDT=0.74  \n  passed refine design stage  i_pTM=0.71    pLDDT=0.77  \n  passed anneal design stage  i_pTM=0.66    pLDDT=0.77  \n  passed harden design stage  i_pTM=0.57    pLDDT=0.75  \n  rejected at mutate design stage  i_pTM=0.47    pLDDT=0.68   due to [i_pTM]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793497488.05",
+   "design": "270.37",
+   "compiled": "1"
+  },
+  "design_seconds": 270.37,
+  "terminated": "mutate",
+  "final_round": {
+   "phase": "harden",
+   "round": 3
+  },
+  "final_iptm": 0.44,
+  "final_ptm": 0.69,
+  "weighted_loss": 6.2315,
+  "reported_iptm": 0.47,
+  "reported_plddt": 0.68,
+  "rounds": 38,
+  "seconds_per_round": 7.12
+ },
+ {
+  "backend": "jax",
+  "seed": 5,
+  "parent_device": null,
+  "returncode": 0,
+  "wall_seconds": 139.6,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed5\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed5/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign jax_seed5\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/jax_seed5 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_314f5f8d5c3f917f | accepted 0/1 ===\n  rejected at screen design stage  i_pTM=0.12    pLDDT=0.31   due to [pLDDT]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793497766.66",
+   "design": "131.35",
+   "compiled": "1"
+  },
+  "design_seconds": 131.35,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "final_iptm": 0.16,
+  "final_ptm": 0.57,
+  "weighted_loss": 8.262,
+  "reported_iptm": 0.12,
+  "reported_plddt": 0.31,
+  "rounds": 15,
+  "seconds_per_round": 8.76
+ },
+ {
+  "backend": "mlx",
+  "seed": 5,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 106.1,
+  "output_tail": "compiled graphs cached in /var/folders/cg/wxbyl_c535b831s7hj99p7000000gp/T/bindcraft_xla_cache\ncampaign preflight: design model_1_multimer_v3,model_2_multimer_v3,model_3_multimer_v3,model_4_multimer_v3,model_5_multimer_v3 | validation validation off | redesign trajectory-only | targets hPDL1 | output /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed5\ncampaign metadata: BindCraft 2 v1.0.4 | settings /Users/ethanputnam/BindCraft2/examples/pdl1_denovo.json | written /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed5/campaign_metadata.json\nBindCraft 2 v1.0.4\ncampaign mlx_cpu_seed5\nbinder length 80\ntarget hPDL1 (target) | 115 residues | hotspots 54,56,66,115\nlosses binder_contacts=1.0 binder_helicity=-0.3 binder_pae=0.4 compactness=0.5 interface_contacts=1.0 interface_pae=0.1 iptm_loss=0.05 plddt_loss=0.1\nfilters Backbone_Clashes <= 0, Binder_RMSD <= 3.5, Interface_Residues >= 7, Unbound_Binder_pLDDT >= 0.7, i_pAE <= 0.35, i_pTM >= 0.6, pTM >= 0.55\nresults /private/tmp/claude-502/-Users-ethanputnam-Bindcraft-Hunter/3b5c1551-6b89-4815-a7dd-14c6d1a4ddd6/scratchpad/e2e_compare/mlx_cpu_seed5 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\ntrajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories=1\n\n=== trajectory 1 | design_l80_314f5f8d5c3f917f | accepted 0/1 ===\n  rejected at screen design stage  i_pTM=0.28    pLDDT=0.56   due to [pLDDT]\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793497900.92",
+   "design": "103.18",
+   "compiled": "1"
+  },
+  "design_seconds": 103.18,
+  "terminated": "screen",
+  "final_round": {
+   "phase": "screen",
+   "round": 15
+  },
+  "final_iptm": 0.25,
+  "final_ptm": 0.61,
+  "weighted_loss": 6.83,
+  "reported_iptm": 0.28,
+  "reported_plddt": 0.56,
+  "rounds": 15,
+  "seconds_per_round": 6.88
+ }
+]

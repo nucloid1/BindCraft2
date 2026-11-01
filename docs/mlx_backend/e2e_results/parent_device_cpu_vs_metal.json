@@ -1,0 +1,102 @@
+[
+ {
+  "backend": "mlx",
+  "seed": 1,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 163.0,
+  "output_tail": "age  i_pTM=0.14    pLDDT=0.43  \n  passed harden design stage  i_pTM=0.14    pLDDT=0.43  \n  passed mutate design stage  i_pTM=0.14    pLDDT=0.39  \n  binder hallucination successful\n  binder optimization, 10 MPNN redesigns\nProteinMPNN: holding 3 of 80 residue(s) of chain binder\n   1/10  rejected  Binder_RMSD=1.9     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.9     i_pTM=0.08    pLDDT=0.69    pTM=0.55    failed [Interface_Residues]\n   2/10  rejected  Binder_RMSD=0.59    Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=1.0     Target_pLDDT=0.93    i_pAE=0.89    i_pTM=0.07    pLDDT=0.78    pTM=0.55    failed [Interface_Residues]\n   3/10  rejected  Binder_RMSD=2.7     Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=1.0     Target_pLDDT=0.93    i_pAE=0.9     i_pTM=0.07    pLDDT=0.65    pTM=0.56    failed [Interface_Residues]\n   4/10  rejected  Binder_RMSD=2.4     Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.9     i_pTM=0.08    pLDDT=0.64    pTM=0.56    failed [Interface_Residues]\n   5/10  rejected  Binder_RMSD=10.4    Hotspot_Contact_Fraction=0.0     Interface_Residues=2    Off_Epitope_Contact_Fraction=1.0     Target_pLDDT=0.94    i_pAE=0.88    i_pTM=0.09    pLDDT=0.67    pTM=0.56    failed [Interface_Residues, Binder_RMSD]\n   6/10  rejected  Binder_RMSD=9.2     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.94    i_pAE=0.89    i_pTM=0.08    pLDDT=0.72    pTM=0.56    failed [Interface_Residues, Binder_RMSD]\n   7/10  rejected  Binder_RMSD=0.5     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.94    i_pAE=0.89    i_pTM=0.08    pLDDT=0.73    pTM=0.56    failed [Interface_Residues]\n   8/10  rejected  Binder_RMSD=2.1     Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=1.0     Target_pLDDT=0.94    i_pAE=0.9     i_pTM=0.08    pLDDT=0.67    pTM=0.56    failed [Interface_Residues]\n   9/10  rejected  Binder_RMSD=3.2     Hotspot_Contact_Fraction=0.0     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.5     Target_pLDDT=0.94    i_pAE=0.9     i_pTM=0.08    pLDDT=0.72    pTM=0.56    failed [Interface_Residues]\n  10/10  rejected  Binder_RMSD=1.4     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.9     i_pTM=0.07    pLDDT=0.72    pTM=0.55    failed [Interface_Residues]\n  0 of 10 redesigns passed\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793495441.49",
+   "design": "88.04",
+   "compiled": "1"
+  },
+  "design_seconds": 88.04,
+  "terminated": "",
+  "final_round": {
+   "phase": "mutate",
+   "round": 2
+  },
+  "final_iptm": 0.16,
+  "final_ptm": 0.58,
+  "weighted_loss": 0.0,
+  "reported_iptm": 0.07,
+  "reported_plddt": 0.72
+ },
+ {
+  "backend": "mlx",
+  "seed": 1,
+  "parent_device": "metal",
+  "returncode": 0,
+  "wall_seconds": 164.0,
+  "output_tail": "DDT=0.38  \n  passed mutate design stage  i_pTM=0.17    pLDDT=0.37  \n  binder hallucination successful\n  binder optimization, 10 MPNN redesigns\nProteinMPNN: holding 9 of 80 residue(s) of chain binder\n   1/10  rejected  Binder_RMSD=1.7     Hotspot_Contact_Fraction=1.0     Interface_Residues=4    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.91    i_pAE=0.66    i_pTM=0.26    pLDDT=0.63    pTM=0.63    failed [Interface_Residues]\n   2/10  rejected  Binder_RMSD=0.68    Hotspot_Contact_Fraction=0.25    Interface_Residues=1    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.86    i_pTM=0.09    pLDDT=0.7     pTM=0.56    failed [Interface_Residues]\n   3/10  rejected  Binder_RMSD=1.0     Hotspot_Contact_Fraction=0.5     Interface_Residues=1    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.82    i_pTM=0.12    pLDDT=0.61    pTM=0.58    failed [Interface_Residues]\n   4/10  rejected  Binder_RMSD=3.6     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.86    i_pTM=0.1     pLDDT=0.57    pTM=0.57    failed [Interface_Residues, Binder_RMSD]\n   5/10  rejected  Binder_RMSD=1.9     Hotspot_Contact_Fraction=0.5     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.91    i_pAE=0.73    i_pTM=0.2     pLDDT=0.64    pTM=0.61    failed [Interface_Residues]\n   6/10  rejected  Binder_RMSD=1.2     Hotspot_Contact_Fraction=0.0     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.5     Target_pLDDT=0.93    i_pAE=0.87    i_pTM=0.09    pLDDT=0.66    pTM=0.57    failed [Interface_Residues]\n   7/10  rejected  Binder_RMSD=2.6     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.89    i_pTM=0.08    pLDDT=0.65    pTM=0.56    failed [Interface_Residues]\n   8/10  rejected  Binder_RMSD=2.3     Hotspot_Contact_Fraction=0.0     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.88    i_pTM=0.09    pLDDT=0.61    pTM=0.57    failed [Interface_Residues]\n   9/10  rejected  Binder_RMSD=1.6     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.88    i_pTM=0.08    pLDDT=0.68    pTM=0.56    failed [Interface_Residues]\n  10/10  rejected  Binder_RMSD=1.8     Hotspot_Contact_Fraction=0.0     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.5     Target_pLDDT=0.93    i_pAE=0.87    i_pTM=0.08    pLDDT=0.62    pTM=0.56    failed [Interface_Residues]\n  0 of 10 redesigns passed\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793495604.22",
+   "design": "87.74",
+   "compiled": "1"
+  },
+  "design_seconds": 87.74,
+  "terminated": "",
+  "final_round": {
+   "phase": "mutate",
+   "round": 2
+  },
+  "final_iptm": 0.16,
+  "final_ptm": 0.59,
+  "weighted_loss": 0.0,
+  "reported_iptm": 0.08,
+  "reported_plddt": 0.62
+ },
+ {
+  "backend": "mlx",
+  "seed": 2,
+  "parent_device": "cpu",
+  "returncode": 0,
+  "wall_seconds": 158.6,
+  "output_tail": "al design stage  i_pTM=0.14    pLDDT=0.48  \n  passed harden design stage  i_pTM=0.14    pLDDT=0.44  \n  passed mutate design stage  i_pTM=0.14    pLDDT=0.45  \n  binder hallucination successful\n  binder optimization, 10 MPNN redesigns\nProteinMPNN: holding 11 of 80 residue(s) of chain binder\n   1/10  rejected  Binder_RMSD=1.2     Hotspot_Contact_Fraction=0.0     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.5     Target_pLDDT=0.92    i_pAE=0.87    i_pTM=0.09    pLDDT=0.67    pTM=0.56    failed [Interface_Residues]\n   2/10  rejected  Binder_RMSD=2.2     Hotspot_Contact_Fraction=0.0     Interface_Residues=4    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.81    i_pTM=0.13    pLDDT=0.65    pTM=0.58    failed [Interface_Residues]\n   3/10  rejected  Binder_RMSD=1.4     Hotspot_Contact_Fraction=0.0     Interface_Residues=3    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.81    i_pTM=0.12    pLDDT=0.65    pTM=0.58    failed [Interface_Residues]\n   4/10  rejected  Binder_RMSD=3.9     Hotspot_Contact_Fraction=0.0     Interface_Residues=3    Off_Epitope_Contact_Fraction=0.25    Target_pLDDT=0.92    i_pAE=0.85    i_pTM=0.11    pLDDT=0.64    pTM=0.57    failed [Interface_Residues, Binder_RMSD]\n   5/10  rejected  Binder_RMSD=1.5     Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=1.0     Target_pLDDT=0.92    i_pAE=0.85    i_pTM=0.1     pLDDT=0.65    pTM=0.57    failed [Interface_Residues]\n   6/10  rejected  Binder_RMSD=0.81    Hotspot_Contact_Fraction=0.0     Interface_Residues=4    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.8     i_pTM=0.12    pLDDT=0.74    pTM=0.58    failed [Interface_Residues]\n   7/10  rejected  Binder_RMSD=1.1     Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.81    i_pTM=0.13    pLDDT=0.74    pTM=0.58    failed [Interface_Residues]\n   8/10  rejected  Binder_RMSD=0.42    Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.8     i_pTM=0.13    pLDDT=0.71    pTM=0.58    failed [Interface_Residues]\n   9/10  rejected  Binder_RMSD=1.3     Hotspot_Contact_Fraction=0.0     Interface_Residues=4    Off_Epitope_Contact_Fraction=0.33    Target_pLDDT=0.92    i_pAE=0.86    i_pTM=0.09    pLDDT=0.71    pTM=0.57    failed [Interface_Residues]\n  10/10  rejected  Binder_RMSD=1.2     Hotspot_Contact_Fraction=0.0     Interface_Residues=1    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.81    i_pTM=0.13    pLDDT=0.61    pTM=0.58    failed [Interface_Residues]\n  0 of 10 redesigns passed\n\ncampaign stopped: 1 trajectories ran and none were accepted, so the settings rather than the budget are what to change\n\ncampaign done: 0 accepted design(s) after 1 trajectory, ranked by i_pDAE\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793495768.47",
+   "design": "85.33",
+   "compiled": "1"
+  },
+  "design_seconds": 85.33,
+  "terminated": "",
+  "final_round": {
+   "phase": "mutate",
+   "round": 2
+  },
+  "final_iptm": 0.11,
+  "final_ptm": 0.57,
+  "weighted_loss": 0.0,
+  "reported_iptm": 0.13,
+  "reported_plddt": 0.61
+ },
+ {
+  "backend": "mlx",
+  "seed": 2,
+  "parent_device": "metal",
+  "returncode": 0,
+  "wall_seconds": 168.0,
+  "output_tail": "mlx_metal_seed2 | 3_Ranked/!_Ranked.csv rewritten as each design is accepted | summary.csv written when the campaign ends\n\n=== trajectory 1 | design_l80_91ede9caa0cbc530 | accepted 0/1 ===\n  passed screen design stage  i_pTM=0.12    pLDDT=0.35  \n  passed refine design stage  i_pTM=0.11    pLDDT=0.3   \n  passed anneal design stage  i_pTM=0.16    pLDDT=0.44  \n  passed harden design stage  i_pTM=0.19    pLDDT=0.44  \n  passed mutate design stage  i_pTM=0.18    pLDDT=0.41  \n  binder hallucination successful\n  binder optimization, 10 MPNN redesigns\nProteinMPNN: holding 13 of 80 residue(s) of chain binder\n   1/10  ACCEPTED  Binder_RMSD=1.5     Hotspot_Contact_Fraction=0.75    Interface_Residues=11   Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.75    i_pTM=0.2     pLDDT=0.66    pTM=0.61  \n   2/10  ACCEPTED  Binder_RMSD=1.3     Hotspot_Contact_Fraction=0.5     Interface_Residues=7    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.83    i_pTM=0.13    pLDDT=0.61    pTM=0.58  \n   3/10  rejected  Binder_RMSD=0.26    Hotspot_Contact_Fraction=0.75    Interface_Residues=6    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.71    i_pTM=0.23    pLDDT=0.66    pTM=0.62    failed [Interface_Residues]\n   4/10  rejected  Binder_RMSD=0.49    Hotspot_Contact_Fraction=0.5     Interface_Residues=3    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.8     i_pTM=0.13    pLDDT=0.78    pTM=0.58    failed [Interface_Residues]\n   5/10  rejected  Binder_RMSD=1.1     Hotspot_Contact_Fraction=0.0     Interface_Residues=0    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.93    i_pAE=0.87    i_pTM=0.09    pLDDT=0.56    pTM=0.57    failed [Interface_Residues]\n   6/10  rejected  Binder_RMSD=0.65    Hotspot_Contact_Fraction=0.75    Interface_Residues=5    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.69    i_pTM=0.23    pLDDT=0.75    pTM=0.62    failed [Interface_Residues]\n   7/10  rejected  Binder_RMSD=0.57    Hotspot_Contact_Fraction=0.5     Interface_Residues=2    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.76    i_pTM=0.19    pLDDT=0.66    pTM=0.6     failed [Interface_Residues]\n   8/10  rejected  Binder_RMSD=0.24    Hotspot_Contact_Fraction=0.5     Interface_Residues=3    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.72    i_pTM=0.2     pLDDT=0.82    pTM=0.61    failed [Interface_Residues]\n   9/10  ACCEPTED  Binder_RMSD=0.34    Hotspot_Contact_Fraction=0.75    Interface_Residues=9    Off_Epitope_Contact_Fraction=0.0     Target_pLDDT=0.92    i_pAE=0.7     i_pTM=0.23    pLDDT=0.72    pTM=0.62  \n  3 of 10 redesigns passed, keeping the best 1 by i_pDAE: candidate 9 (0.0)\n\ncampaign done: 1 accepted design(s) after 1 trajectory, ranked by i_pDAE\nPlatform 'metal' is experimental and not all JAX functionality may be correctly supported!\npreflight WARNING: disk is 96% full (limit 90%); running on the opt-in BINDCRAFT_MLX_MIN_FREE_GB=20 with 36 GB free\n",
+  "timing": {
+   "worker": "0",
+   "start": "1793495926.66",
+   "design": "81.04",
+   "compiled": "1"
+  },
+  "design_seconds": 81.04,
+  "terminated": "",
+  "final_round": {
+   "phase": "mutate",
+   "round": 2
+  },
+  "final_iptm": 0.2,
+  "final_ptm": 0.6,
+  "weighted_loss": 0.0,
+  "reported_iptm": 0.23,
+  "reported_plddt": 0.72
+ }
+]
