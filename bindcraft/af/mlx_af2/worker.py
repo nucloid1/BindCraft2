@@ -47,6 +47,8 @@ MAX_CALLS = 8
 TAPE_BUDGET_ENV = 'BINDCRAFT_MLX_TAPE_GIB'  #the most memory kept tapes may hold, in GiB; default a fifth of the worker's cap (about 2.2 GiB per call at 400 residues)
 TAPE_FRACTION = 0.2
 UNCAPPED_TAPE_GIB = 8.0  #a worker started without a cap
+CACHE_FRACTION = 0.25  #MLX's allocator cache (freed buffers kept for reuse), as a share of the cap: at 400 residues 2 GiB made the vjp 13% slower than 9 GiB, and 9 GiB was as fast as an unbounded cache,
+#which grew to 16 GiB (docs/mlx_backend/checkpoints.md). MLX releases cached buffers before active plus cached memory passes its own limit, which the guard sets at 0.9 of the cap.
 CALL_TIMEOUT_ENV = 'BINDCRAFT_MLX_CALL_TIMEOUT_S'
 DEFAULT_CALL_TIMEOUT_S = 1800.0  #the slowest legitimate call is a gradient at several hundred residues on a loaded machine, about a minute; this is a net for a wedge, not a speed limit
 DEVICE_ENV = 'BINDCRAFT_MLX_DEVICE'
@@ -94,6 +96,9 @@ def payload_bytes(arrays: Dict[str, np.ndarray]) -> int:
     return sum(np.asarray(array).nbytes for array in arrays.values())
 
 #----------------------------------------------------------------------------------------- worker side
+def allocator_cache_gib(cap_gib: float) -> float:
+    return CACHE_FRACTION * cap_gib
+
 def tape_budget_bytes(cap_gib: Optional[float]) -> int:
     configured = os.environ.get(TAPE_BUDGET_ENV, '').strip()
     gib = float(configured) if configured else (TAPE_FRACTION * cap_gib if cap_gib else UNCAPPED_TAPE_GIB)
@@ -130,7 +135,7 @@ def serve(params_dir: str, cap_gib: Optional[float], dtype_name: str) -> None:
     proto_out = os.fdopen(os.dup(1), 'wb')
     os.dup2(2, 1)  #anything printed from here on goes to stderr
     proto_in = sys.stdin.buffer
-    guard = memory_guard(max_gib=cap_gib, cache_gib=2.0) if cap_gib else contextlib.nullcontext()
+    guard = memory_guard(max_gib=cap_gib, cache_gib=allocator_cache_gib(cap_gib)) if cap_gib else contextlib.nullcontext()
     with guard as peak:
         registry: Dict[int, dict] = {}
         resident: List[int] = []  #handles holding weights, least recently used first

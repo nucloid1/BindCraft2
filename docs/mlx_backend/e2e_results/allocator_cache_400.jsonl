@@ -1,0 +1,9 @@
+{"round": 1, "cache_limit": "2 GiB", "vjp_s": 12.836, "peak_active_gib": 10.31, "cache_after_gib": 2.06}
+{"round": 1, "cache_limit": "4 GiB", "vjp_s": 11.591, "peak_active_gib": 10.31, "cache_after_gib": 4.07}
+{"round": 1, "cache_limit": "9 GiB", "vjp_s": 11.248, "peak_active_gib": 10.31, "cache_after_gib": 9.08}
+{"round": 1, "cache_limit": "default", "vjp_s": 11.21, "peak_active_gib": 10.31, "cache_after_gib": 16.24}
+{"round": 2, "cache_limit": "2 GiB", "vjp_s": 12.829, "peak_active_gib": 10.31, "cache_after_gib": 2.06}
+{"round": 2, "cache_limit": "4 GiB", "vjp_s": 11.6, "peak_active_gib": 10.31, "cache_after_gib": 4.07}
+{"round": 2, "cache_limit": "9 GiB", "vjp_s": 11.208, "peak_active_gib": 10.31, "cache_after_gib": 9.02}
+{"round": 2, "cache_limit": "default", "vjp_s": 11.208, "peak_active_gib": 10.31, "cache_after_gib": 16.24}
+{"default_cache_limit_gib": 45.6}

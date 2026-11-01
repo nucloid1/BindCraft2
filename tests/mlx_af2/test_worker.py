@@ -221,3 +221,8 @@ def test_the_call_deadline_has_a_default_and_an_environment_override(monkeypatch
     assert RemoteModel('/unused', dtype='fp32').call_timeout_s == 45.0
     monkeypatch.setenv(worker_module.CALL_TIMEOUT_ENV, '0')
     assert RemoteModel('/unused', dtype='fp32').call_timeout_s is None  #0 turns the deadline off
+
+def test_the_allocator_cache_is_a_quarter_of_the_memory_cap():
+    #MLX keeps freed buffers for reuse up to this limit: 2 GiB made the 400-residue vjp 13% slower than 9 GiB, and 9 GiB was as fast as an unbounded cache, which grew to 16 GiB (docs/mlx_backend/checkpoints.md)
+    assert worker_module.allocator_cache_gib(36.0) == 9.0
+    assert worker_module.allocator_cache_gib(8.0) == 2.0
