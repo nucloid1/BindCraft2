@@ -17,7 +17,7 @@ decision taken on the way.
   references of the real model (single trajectory inputs, outputs, cotangents and gradients) to 1e-3 or better on live residues; the gradient cosine against `jax.vjp` is 0.9999 or better, with one documented exception (a chaotic fp32 state, `checkpoints.md`).
 - **Real campaigns run end to end** on the backend (design stages, ProteinMPNN, validation, filters), including `hard_target` and the desperation ladder; a killed worker stops the run nonzero with the cause named; with `BINDCRAFT_BACKEND` unset the JAX path is untouched and no MLX module is imported.
 - **Against metaljax** (M3 Max, bf16, warm): 1.28x per gradient round of real trajectories, 1.6x to 2.2x per forward, 1.3x to 1.5x per design step; outcome distributions over five seeds overlap (`e2e.md`). The CPU-side JAX work is about 0.2% of a gradient round: the plan's phase-2 trigger (port it if above 20%) is not met.
-- Verification: (filled in after the final run: see the ledger's Task 21 line)
+- Verification: the whole suite on a clean tree, `BINDCRAFT_MLX_INTEGRATION=1 BINDCRAFT_MLX_MIN_FREE_GB=20 JAX_PLATFORMS=cpu pytest tests/mlx_af2 -q`: **249 passed in 55:31**, no failures, skips or xfails (2026-11-01, at `a582405`; the fp32 chaotic-gradient case is an xfail only in GPU test mode, a documented finding of the shipped model, `checkpoints.md`).
 
 ## What is NOT established
 
@@ -55,7 +55,7 @@ JAX_PLATFORMS=cpu .venv/bin/python scripts/mlx_af2/capture_refs.py [--monomer] [
 .venv/bin/python scripts/mlx_af2/e2e_compare.py --compare --seeds 5 ; scripts/mlx_af2/bench_{block,grad,forward}.py     # the benchmarks
 ```
 
-A whole-suite run takes 45 to 55 minutes on the CPU device and about 13 in GPU mode. The disk was 95 to 97% full throughout: runs used `BINDCRAFT_MLX_MIN_FREE_GB=20`, and a watchdog killed nothing. `task-done` records a trailing worker-exit `BrokenPipeError` instead of the result on some runs:
+A whole-suite run takes 55 minutes on the CPU device (55:31 at the final run) and about 13 in GPU mode. The disk was 95 to 97% full throughout: runs used `BINDCRAFT_MLX_MIN_FREE_GB=20`, and a watchdog killed nothing. `task-done` records a trailing worker-exit `BrokenPipeError` instead of the result on some runs:
 correct the ledger line by hand. zsh does not word-split an unquoted variable: put loops in a bash script file.
 
 ## Map
